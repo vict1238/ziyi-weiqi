@@ -1,0 +1,13 @@
+* text=auto
+*.cs text eol=crlf
+*.ps1 text eol=crlf
+*.md text eol=lf
+*.txt text eol=lf
+*.sgf text eol=lf
+*.exe binary
+*.dll binary
+*.zip binary
+*.gz binary
+*.png binary
+*.ico binary
+engine-assets/** -text

@@ -1,0 +1,16 @@
+﻿PASS
+Product title and About tribute: PASS
+Unconfirmed custom selection keeps the committed depth; Cancel restores preset: PASS
+Board hit-test -> human D4 -> actual KataGo reply: PASS
+Best hints control + real candidates: PASS
+Score control + 361 ownership values: PASS
+Undo a human / AI pair: PASS
+AI self-play multiple turns -> Stop -> no late move: PASS
+SGF load -> review -> return -> export: PASS
+Rendered full, territory and minimum window screenshots: PASS
+New game cancels in-flight analysis with no stale move: PASS
+Choose White -> automatic KataGo first move: PASS
+Japanese rules + 9x9 + large valid komi real engine: PASS
+Custom 3,000,000,000 via settings dialog -> real progress -> Stop and play: PASS
+Continuous setting -> live progress -> Stop and retain analysis: PASS
+Continuous cancellation + queued progress isolation after New Game: PASS

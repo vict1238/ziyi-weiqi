@@ -1,0 +1,7 @@
+﻿PASS
+19x19 real KataGo analysis + ownership + legal move: Q4; 0.83s
+9x9 SGF setup stones + initial player + legal move: G6
+Cancellation: PASS
+Engine remains usable after cancellation: F5
+Custom 3,000,000,000 visits accepted without integer overflow + live progress + cancel: PASS
+Continuous search -> Stop -> usable final best move and territory: R16

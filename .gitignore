@@ -1,0 +1,5 @@
+bin/
+*.pdb
+*.tmp
+qa/*.exe
+qa/*.dll

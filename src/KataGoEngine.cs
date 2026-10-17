@@ -1,0 +1,541 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Web.Script.Serialization;
+
+namespace GoDesk
+{
+    public sealed class MoveCandidate
+    {
+        public string Move { get; set; }
+        // All probabilities, scores, and ownership values use Black's perspective.
+        public double Winrate { get; set; }
+        public double ScoreLead { get; set; }
+        public long Visits { get; set; }
+        public int Order { get; set; }
+    }
+
+    public sealed class AnalysisResult
+    {
+        public string BestMove { get; set; }
+        public double BlackWinrate { get; set; }
+        public double BlackScoreLead { get; set; }
+        public long Visits { get; set; }
+        public List<MoveCandidate> Candidates { get; set; }
+        // Row-major, top-left to bottom-right: +1 Black, -1 White.
+        public double[] Ownership { get; set; }
+    }
+
+    public sealed class KataGoEngine : IDisposable
+    {
+        private const string ModelFile = "g170e-b10c128-s1141046784-d204142634.bin.gz";
+        // KataGo 1.14.1's own JSON protocol limit; zero means think until Stop().
+        private const long NativeContinuousVisits = 1L << 50;
+        private readonly object sync = new object();
+        private readonly SemaphoreSlim startGate = new SemaphoreSlim(1, 1);
+        private readonly Dictionary<string, PendingRequest> pending = new Dictionary<string, PendingRequest>();
+        private readonly Queue<string> recentErrors = new Queue<string>();
+        private Process process;
+        private TaskCompletionSource<bool> readySignal;
+        private string readyId;
+        private string status = "KataGo CPU 引擎尚未启动";
+        private bool ready;
+        private bool disposed;
+        private int generation;
+        private int stopGeneration;
+
+        private sealed class PendingRequest
+        {
+            public readonly TaskCompletionSource<AnalysisResult> Completion =
+                new TaskCompletionSource<AnalysisResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            public int Size;
+            public Action<AnalysisResult> Progress;
+        }
+
+        public string Status { get { lock (sync) return status; } }
+        public bool IsReady { get { lock (sync) return ready && !disposed; } }
+        // Raised on a worker thread. Desktop consumers should marshal to their UI thread.
+        public event Action<string> StatusChanged;
+
+        public async Task<AnalysisResult> AnalyzeAsync(GoGame game, long maxVisits, bool ownership, Action<AnalysisResult> progress = null)
+        {
+            if (game == null) throw new ArgumentNullException("game");
+            if (maxVisits < 0) throw new ArgumentOutOfRangeException("maxVisits", "搜索次数必须为正整数，或以 0 表示持续思考。");
+
+            // Snapshot every model field synchronously, before the first await. Undo,
+            // new-game, and SGF navigation can mutate the original game while we run.
+            int size = game.Size;
+            double komi = game.Komi;
+            string rules = game.Rules;
+            Stone initialPlayer = game.InitialPlayer;
+            Stone toPlay = game.ToPlay;
+            var moves = game.Moves.Take(game.Position)
+                .Select(m => new string[] { Color(m.Color), m.ToGtp(size) }).ToArray();
+            var initialStones = game.InitialStones
+                .Select(m => new string[] { Color(m.Color), m.ToGtp(size) }).ToArray();
+            int requestGeneration;
+            int requestStopGeneration;
+            lock (sync)
+            {
+                ThrowIfDisposed();
+                requestGeneration = generation;
+                requestStopGeneration = stopGeneration;
+            }
+            if (size < 2 || size > 19) throw new ArgumentOutOfRangeException("game", "KataGo 支持 2 至 19 路棋盘。");
+
+            await EnsureStartedAsync().ConfigureAwait(false);
+            string id = "analysis-" + Guid.NewGuid().ToString("N");
+            var query = new Dictionary<string, object>
+            {
+                { "id", id }, { "moves", moves }, { "initialStones", initialStones },
+                { "initialPlayer", Color(initialPlayer == Stone.Empty ? (moves.Length == 0 ? toPlay : Stone.Black) : initialPlayer) },
+                { "rules", rules }, { "komi", komi },
+                { "boardXSize", size }, { "boardYSize", size },
+                { "maxVisits", maxVisits == 0 ? NativeContinuousVisits : maxVisits }, { "includeOwnership", ownership },
+                { "analysisPVLen", 10 }, { "reportDuringSearchEvery", 0.5 }
+            };
+            var request = new PendingRequest { Size = size, Progress = progress };
+            try
+            {
+                lock (sync)
+                {
+                    ThrowIfDisposed();
+                    if (requestGeneration != generation) throw new TaskCanceledException("分析已取消。");
+                    if (!ready || process == null || process.HasExited)
+                        throw new InvalidOperationException("KataGo 进程已退出，请重新分析。");
+                    pending.Add(id, request);
+                    WriteLocked(query);
+                    // Stop pressed while model startup was in progress must also stop
+                    // this request once it reaches the native engine.
+                    if (requestStopGeneration != stopGeneration) TryTerminateLocked(id);
+                }
+                if (!request.Completion.Task.IsCompleted)
+                    SetStatus(maxVisits == 0 ? "KataGo 持续思考中，可随时停止" :
+                        "KataGo 正在思考（目标 " + maxVisits.ToString(CultureInfo.InvariantCulture) + " 次搜索）");
+                return await request.Completion.Task.ConfigureAwait(false);
+            }
+            catch
+            {
+                lock (sync) pending.Remove(id);
+                throw;
+            }
+        }
+
+        private async Task EnsureStartedAsync()
+        {
+            await startGate.WaitAsync().ConfigureAwait(false);
+            Process attempted = null;
+            try
+            {
+                Process previous;
+                lock (sync)
+                {
+                    ThrowIfDisposed();
+                    if (ready && process != null && !process.HasExited) return;
+                    previous = process;
+                    process = null;
+                    ready = false;
+                }
+                if (previous != null) { StopProcess(previous); previous.Dispose(); }
+                SetStatus("正在准备 KataGo CPU 引擎…");
+                string directory = await Task.Run(() => ExtractEmbeddedEngine()).ConfigureAwait(false);
+                var info = new ProcessStartInfo
+                {
+                    FileName = Path.Combine(directory, "katago.exe"),
+                    Arguments = "analysis -config \"" + Path.Combine(directory, "analysis.cfg") +
+                        "\" -model \"" + Path.Combine(directory, ModelFile) + "\" -quit-without-waiting",
+                    WorkingDirectory = directory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+                Process launched = new Process { StartInfo = info, EnableRaisingEvents = true };
+                attempted = launched;
+                TaskCompletionSource<bool> startup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                launched.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                {
+                    if (e.Data != null) OnOutput(launched, e.Data);
+                };
+                launched.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                {
+                    if (e.Data != null) OnStderr(launched, e.Data);
+                };
+                launched.Exited += delegate { OnExited(launched); };
+                lock (sync)
+                {
+                    ThrowIfDisposed();
+                    recentErrors.Clear();
+                    process = launched;
+                    readySignal = startup;
+                    readyId = "startup-" + Guid.NewGuid().ToString("N");
+                    ready = false;
+                    try
+                    {
+                        if (!launched.Start()) throw new InvalidOperationException("无法启动 KataGo。");
+                        launched.BeginOutputReadLine();
+                        launched.BeginErrorReadLine();
+                        WriteLocked(new Dictionary<string, object> { { "id", readyId }, { "action", "query_version" } });
+                    }
+                    catch
+                    {
+                        process = null;
+                        launched.Dispose();
+                        throw;
+                    }
+                }
+                SetStatus("正在加载围棋模型…");
+                Task completed = await Task.WhenAny(startup.Task, Task.Delay(90000)).ConfigureAwait(false);
+                if (completed != startup.Task)
+                {
+                    StopProcess(launched);
+                    throw new TimeoutException("KataGo 模型加载超过 90 秒，请重试。");
+                }
+                await startup.Task.ConfigureAwait(false);
+                lock (sync)
+                {
+                    ThrowIfDisposed();
+                    if (process != launched || launched.HasExited)
+                        throw new InvalidOperationException("KataGo 在加载过程中退出。");
+                    ready = true;
+                }
+                SetStatus("KataGo CPU 引擎就绪");
+            }
+            catch (Exception ex)
+            {
+                if (attempted != null)
+                {
+                    lock (sync) { if (process == attempted) { process = null; ready = false; } }
+                    StopProcess(attempted);
+                    attempted.Dispose();
+                }
+                SetStatus("AI 引擎启动失败：" + ex.Message);
+                throw;
+            }
+            finally { startGate.Release(); }
+        }
+
+        private void OnOutput(Process source, string line)
+        {
+            PendingRequest request = null;
+            TaskCompletionSource<bool> startup = null;
+            Exception failure = null;
+            AnalysisResult result = null;
+            bool nowIdle = false;
+            bool partial = false;
+            string responseId = null;
+            try
+            {
+                var message = Serializer().DeserializeObject(line) as Dictionary<string, object>;
+                if (message == null) return;
+                string id = Text(message, "id");
+                responseId = id;
+                lock (sync)
+                {
+                    if (source != process || disposed) return;
+                    if (id == readyId && message.ContainsKey("version")) startup = readySignal;
+                    if (message.ContainsKey("warning")) return;
+                    if (message.ContainsKey("error"))
+                    {
+                        failure = new InvalidOperationException("KataGo：" + Text(message, "error"));
+                        if (String.IsNullOrEmpty(id))
+                        {
+                            // Engine-wide protocol failure: fail every waiting request.
+                            FailAllLocked(failure);
+                            if (readySignal != null) readySignal.TrySetException(failure);
+                            return;
+                        }
+                        if (id == readyId) startup = readySignal;
+                    }
+                    partial = message.ContainsKey("isDuringSearch") && Convert.ToBoolean(message["isDuringSearch"], CultureInfo.InvariantCulture);
+                    if (pending.TryGetValue(id, out request))
+                    {
+                        if (!partial)
+                        {
+                            pending.Remove(id);
+                            nowIdle = pending.Count == 0;
+                        }
+                    }
+                }
+                if (startup != null)
+                {
+                    if (failure != null) startup.TrySetException(failure); else startup.TrySetResult(true);
+                }
+                if (request == null) return; // Late output from a canceled request, or an action acknowledgment.
+                if (partial)
+                {
+                    if (failure == null && request.Progress != null && !request.Completion.Task.IsCompleted)
+                    {
+                        result = ParseResult(message, request.Size);
+                        try { request.Progress(result); } catch { /* Observers must not stop the native reader. */ }
+                    }
+                    return;
+                }
+                if (failure == null)
+                {
+                    if (message.ContainsKey("noResults") && Convert.ToBoolean(message["noResults"], CultureInfo.InvariantCulture))
+                        request.Completion.TrySetCanceled();
+                    else
+                    {
+                        result = ParseResult(message, request.Size);
+                        request.Completion.TrySetResult(result);
+                    }
+                }
+                else request.Completion.TrySetException(failure);
+                if (nowIdle) SetStatus(failure == null ? "KataGo CPU 引擎就绪" : failure.Message);
+            }
+            catch (Exception ex)
+            {
+                if (request != null)
+                {
+                    lock (sync)
+                    {
+                        PendingRequest active;
+                        if (responseId != null && pending.TryGetValue(responseId, out active) && active == request)
+                        {
+                            pending.Remove(responseId);
+                            TryTerminateLocked(responseId);
+                        }
+                    }
+                    request.Completion.TrySetException(new InvalidOperationException("无法读取 KataGo 分析结果。", ex));
+                    SetStatus("AI 分析结果读取失败，请重试");
+                }
+                else OnStderr(source, "协议读取错误：" + ex.Message);
+            }
+        }
+
+        private static AnalysisResult ParseResult(Dictionary<string, object> message, int size)
+        {
+            object rootObject;
+            if (!message.TryGetValue("rootInfo", out rootObject)) throw new InvalidDataException("结果缺少 rootInfo。");
+            var root = rootObject as Dictionary<string, object>;
+            if (root == null) throw new InvalidDataException("rootInfo 格式错误。");
+            var candidates = new List<MoveCandidate>();
+            object movesObject;
+            if (message.TryGetValue("moveInfos", out movesObject))
+            {
+                foreach (object item in (IEnumerable)movesObject)
+                {
+                    var move = item as Dictionary<string, object>;
+                    if (move == null) continue;
+                    candidates.Add(new MoveCandidate { Move = Text(move, "move"), Winrate = Number(move, "winrate"),
+                        ScoreLead = Number(move, "scoreLead"), Visits = Integer(move, "visits"), Order = (int)Number(move, "order") });
+                }
+            }
+            candidates.Sort((a, b) => a.Order.CompareTo(b.Order));
+            if (candidates.Count == 0 || String.IsNullOrEmpty(candidates[0].Move))
+                throw new InvalidDataException("KataGo 没有返回可用着法。");
+            double[] ownership = null;
+            object ownershipObject;
+            if (message.TryGetValue("ownership", out ownershipObject))
+            {
+                ownership = ((IEnumerable)ownershipObject).Cast<object>()
+                    .Select(v => Convert.ToDouble(v, CultureInfo.InvariantCulture)).ToArray();
+                if (ownership.Length != size * size) throw new InvalidDataException("领地数组长度与棋盘不符。");
+            }
+            return new AnalysisResult { BestMove = candidates[0].Move, BlackWinrate = Number(root, "winrate"),
+                BlackScoreLead = Number(root, "scoreLead"), Visits = Integer(root, "visits"),
+                Candidates = candidates, Ownership = ownership };
+        }
+
+        private void OnStderr(Process source, string line)
+        {
+            lock (sync)
+            {
+                if (source != process || disposed) return;
+                recentErrors.Enqueue(line);
+                while (recentErrors.Count > 8) recentErrors.Dequeue();
+            }
+        }
+
+        private void OnExited(Process source)
+        {
+            string detail;
+            lock (sync)
+            {
+                if (source != process) return;
+                ready = false;
+                process = null;
+                detail = recentErrors.Count == 0 ? "进程已退出" : recentErrors.Last();
+                var error = new InvalidOperationException("KataGo 已退出：" + detail);
+                FailAllLocked(error);
+                if (readySignal != null) readySignal.TrySetException(error);
+            }
+            SetStatus("KataGo 已退出，下次分析将重新启动：" + detail);
+            source.Dispose();
+        }
+
+        // Finish the active searches with the best result found so far. Unlike Cancel,
+        // this keeps their tasks alive for KataGo's final response and any chosen move.
+        public void Stop()
+        {
+            bool stopping;
+            lock (sync)
+            {
+                if (disposed) return;
+                stopGeneration++;
+                stopping = pending.Count > 0;
+                foreach (string id in pending.Keys) TryTerminateLocked(id);
+            }
+            if (stopping) SetStatus("正在停止思考并整理结果…");
+        }
+
+        public void Cancel()
+        {
+            lock (sync)
+            {
+                if (disposed) return;
+                generation++;
+                foreach (var pair in pending)
+                {
+                    TryTerminateLocked(pair.Key);
+                    pair.Value.Completion.TrySetCanceled();
+                }
+                pending.Clear();
+            }
+            SetStatus(IsReady ? "KataGo CPU 引擎就绪" : "AI 分析已取消");
+        }
+
+        private void TryTerminateLocked(string id)
+        {
+            try
+            {
+                if (process != null && !process.HasExited)
+                    WriteLocked(new Dictionary<string, object> { { "id", "cancel-" + Guid.NewGuid().ToString("N") },
+                        { "action", "terminate" }, { "terminateId", id } });
+            }
+            catch (IOException) { }
+            catch (InvalidOperationException) { }
+        }
+
+        private void WriteLocked(object query)
+        {
+            process.StandardInput.WriteLine(Serializer().Serialize(query));
+            process.StandardInput.Flush();
+        }
+
+        private void FailAllLocked(Exception error)
+        {
+            foreach (PendingRequest request in pending.Values) request.Completion.TrySetException(error);
+            pending.Clear();
+        }
+
+        private void SetStatus(string value)
+        {
+            Action<string> handler;
+            lock (sync)
+            {
+                if (disposed || status == value) return;
+                status = value;
+                handler = StatusChanged;
+            }
+            if (handler != null) { try { handler(value); } catch { /* A UI event must not kill the reader. */ } }
+        }
+
+        private void ThrowIfDisposed() { if (disposed) throw new ObjectDisposedException("KataGoEngine"); }
+        private static string Color(Stone stone) { return stone == Stone.White ? "W" : "B"; }
+        private static string Text(Dictionary<string, object> item, string name)
+        { object value; return item.TryGetValue(name, out value) ? Convert.ToString(value, CultureInfo.InvariantCulture) : ""; }
+        private static double Number(Dictionary<string, object> item, string name)
+        { object value; return item.TryGetValue(name, out value) ? Convert.ToDouble(value, CultureInfo.InvariantCulture) : 0; }
+        private static long Integer(Dictionary<string, object> item, string name)
+        { object value; return item.TryGetValue(name, out value) ? Convert.ToInt64(value, CultureInfo.InvariantCulture) : 0; }
+        private static JavaScriptSerializer Serializer() { return new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024, RecursionLimit = 100 }; }
+
+        private static string ExtractEmbeddedEngine()
+        {
+            if (!Environment.Is64BitOperatingSystem) throw new PlatformNotSupportedException("此版本的 KataGo 需要 64 位 Windows。");
+            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "GoDesk", "engine", "katago-1.14.1-b10-v1");
+            Directory.CreateDirectory(directory);
+            Assembly assembly = Assembly.GetExecutingAssembly();
+            string[] resources = assembly.GetManifestResourceNames().Where(n => n.StartsWith("engine.", StringComparison.Ordinal)).ToArray();
+            if (resources.Length == 0) throw new FileNotFoundException("应用程序未包含 KataGo 引擎资源，请重新构建完整版本。");
+            using (var extractionLock = new Mutex(false, @"Local\GoDesk-KataGo-1.14.1-b10-v1"))
+            {
+                bool acquired = false;
+                try
+                {
+                    try { acquired = extractionLock.WaitOne(60000); }
+                    catch (AbandonedMutexException) { acquired = true; }
+                    if (!acquired) throw new TimeoutException("另一个窗口正在准备 AI 引擎，请稍后重试。");
+                    foreach (string resource in resources)
+                    {
+                        string filename = resource.Substring("engine.".Length);
+                        if (filename.Length == 0 || filename != Path.GetFileName(filename) ||
+                            filename.Any(c => !(Char.IsLetterOrDigit(c) || c == '.' || c == '-' || c == '_')) || filename.Contains(".."))
+                            throw new InvalidDataException("引擎资源文件名无效。");
+                        string destination = Path.Combine(directory, filename);
+                        using (Stream embedded = assembly.GetManifestResourceStream(resource))
+                        {
+                            byte[] expected;
+                            using (var hash = SHA256.Create()) expected = hash.ComputeHash(embedded);
+                            bool matches = false;
+                            if (File.Exists(destination))
+                            {
+                                using (Stream existing = File.OpenRead(destination))
+                                using (var hash = SHA256.Create()) matches = expected.SequenceEqual(hash.ComputeHash(existing));
+                            }
+                            if (matches) continue;
+                            embedded.Position = 0;
+                            string temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                            try
+                            {
+                                using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, FileOptions.WriteThrough))
+                                { embedded.CopyTo(output); output.Flush(true); }
+                                if (File.Exists(destination)) File.Replace(temporary, destination, null);
+                                else File.Move(temporary, destination);
+                            }
+                            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+                        }
+                    }
+                }
+                finally { if (acquired) extractionLock.ReleaseMutex(); }
+            }
+            foreach (string required in new string[] { "katago.exe", "analysis.cfg", ModelFile })
+                if (!File.Exists(Path.Combine(directory, required))) throw new FileNotFoundException("缺少 AI 资源：" + required);
+            return directory;
+        }
+
+        private void StopProcess(Process target)
+        {
+            if (target == null) return;
+            try { if (!target.HasExited) target.Kill(); }
+            catch (InvalidOperationException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+        }
+
+        public void Dispose()
+        {
+            Process target;
+            lock (sync)
+            {
+                if (disposed) return;
+                disposed = true;
+                ready = false;
+                generation++;
+                foreach (PendingRequest request in pending.Values) request.Completion.TrySetCanceled();
+                pending.Clear();
+                if (readySignal != null) readySignal.TrySetCanceled();
+                target = process;
+                process = null;
+            }
+            StopProcess(target);
+            if (target != null) target.Dispose();
+            // startGate may still be held by a canceled startup; do not dispose it here.
+        }
+    }
+}
