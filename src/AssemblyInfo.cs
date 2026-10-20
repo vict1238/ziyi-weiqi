@@ -6,6 +6,6 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("GoDesk")]
 [assembly: AssemblyProduct("梓懿围棋")]
 [assembly: AssemblyCopyright("GoDesk contributors, 2026")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 [assembly: ComVisible(false)]

@@ -11,6 +11,16 @@ namespace GoDesk
         public static string Run()
         {
             checks = 0;
+            long[] expected = new long[] { 256, 1024, 2048, 4096, 8192, 16384 };
+            string[] choices = SearchDepth.Choices();
+            Check(SearchDepth.PresetCount == expected.Length && SearchDepth.CustomIndex == expected.Length && choices.Length == expected.Length + 1,
+                "主界面与设置共用全部预设及自定义索引");
+            for (int i = 0; i < expected.Length; i++)
+                Check(SearchDepth.PresetVisits(i) == expected[i] && choices[i].Contains(expected[i].ToString("N0", CultureInfo.InvariantCulture)), "预设标签与实际搜索预算一致：" + expected[i]);
+            Check(SearchDepth.PresetVisits(SearchDepth.DefaultIndex(true)) == 2048 && SearchDepth.PresetVisits(SearchDepth.DefaultIndex(false)) == 256,
+                "GPU 默认 2048，CPU 便携默认 256");
+            choices[0] = "changed";
+            Check(SearchDepth.Choices()[0] != "changed", "调用方不能修改共享预设标签");
             BigInteger visits;
             string error;
             foreach (string input in new string[] { null, "", " ", "\t\r\n" })

@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 if (-not (Test-Path -LiteralPath $compiler)) { throw '需要 Windows 的 .NET Framework 4.8 开发编译器。' }
-$releaseDir = Join-Path $projectRoot 'release/梓懿围棋-v1.2.0'
+$releaseDir = Join-Path $projectRoot 'release/梓懿围棋-v1.3.0'
 $qaDir = Join-Path $projectRoot 'qa'
 New-Item -ItemType Directory -Path $releaseDir,$qaDir -Force | Out-Null
 $sourcePaths = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Filter '*.cs' | Sort-Object Name | ForEach-Object { $_.FullName })

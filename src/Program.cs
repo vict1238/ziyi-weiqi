@@ -31,6 +31,7 @@ namespace GoDesk
                 {
                     string result = GoGameTests.Run() + Environment.NewLine + SearchDepthTests.Run() +
                         Environment.NewLine + BoardCoordinatesTests.Run() + Environment.NewLine + EngineSettingsTests.Run() +
+                        Environment.NewLine + ModelCatalogTests.Run() +
                         Environment.NewLine + StoneSoundTests.Run();
                     WriteReport(args, "PASS\n" + result);
                     return 0;
@@ -43,7 +44,7 @@ namespace GoDesk
                 }
                 if (args.Length > 0 && args[0] == "--gpu-test")
                 {
-                    EngineSettings settings = EngineSettings.CreateGpu();
+                    EngineSettings settings = EngineSettings.CreateGpu(args.Length > 2 ? args[2] : ModelCatalog.StrongestId);
                     settings.Validate();
                     string result = "GPU profile: " + settings.Description + Environment.NewLine +
                         RunEngineChecksAsync(settings).GetAwaiter().GetResult();

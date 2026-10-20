@@ -36,8 +36,8 @@ namespace GoDesk
         private int selfPlaySession;
         private bool selfPlaying;
         private bool stopping, analysisWillPlay, continuousDepth;
-        private long customVisits = 1000;
-        private int selectedDepthIndex = 1;
+        private long customVisits = 4096;
+        private int selectedDepthIndex;
         private double komi = 7.5;
         private string rules = "chinese-ogs";
         public GoGame CurrentGame { get { return game; } }
@@ -56,6 +56,7 @@ namespace GoDesk
                 engineSettings = EngineSettings.GpuAvailable ? EngineSettings.CreateGpu() : EngineSettings.CreateCpu();
                 settingsError = "引擎设置读取失败，请打开引擎 / 模型设置后确认：" + ex.Message;
             }
+            selectedDepthIndex = SearchDepth.DefaultIndex(engineSettings.NormalizedBackend == "gpu");
             Text = "梓懿围棋 · KataGo";
             try { Icon = Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location); } catch { }
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -72,6 +73,7 @@ namespace GoDesk
             if (settingsError == null) InstallEngine(engineSettings);
             else { UpdateEngineDescription(); engineLabel.Text = "引擎设置需要确认"; SetStatus(settingsError); }
             UpdateUi();
+            if (settingsError == null && !String.IsNullOrEmpty(engineSettings.MigrationNotice)) SetStatus(engineSettings.MigrationNotice);
             FormClosing += delegate { closing = true; generation++; engineSession++; if (engine != null) { engine.Cancel(); engine.Dispose(); } stoneSound.Dispose(); };
             KeyDown += OnShortcut;
         }
@@ -89,7 +91,7 @@ namespace GoDesk
             help.DropDownItems.Add("使用说明", null, delegate { ShowHelp(); });
             help.DropDownItems.Add("引擎 / 模型设置…", null, delegate { ShowEngineSettings(this); });
             help.DropDownItems.Add("第三方许可", null, delegate { Program.ShowLicenses(this); });
-            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.2\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\n内置 CPU 模型为 g170 b10（2020）；GPU 和自定义使用设置中的模型文件。\r\n搜索次数表示计算量，例如 256 次访问；不是向后推演 256 手，也不对应人类段位。\r\n支持 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
+            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.3\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），设置中可切换保留的模型或选择本地文件。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
             menu.Items.Add(file); menu.Items.Add(help); MainMenuStrip = menu;
 
             Panel header = new Panel { Dock = DockStyle.Top, Height = 66, Padding = new Padding(26, 9, 24, 8), BackColor = Color.FromArgb(250, 249, 246) };
@@ -140,11 +142,11 @@ namespace GoDesk
             profileLabel = new Label { Name = "EngineProfile", Location = new Point(0, 0), Width = 195, Height = 30, TextAlign = ContentAlignment.MiddleLeft, ForeColor = muted, AutoEllipsis = true, Font = new Font("Microsoft YaHei UI", 8) };
             Button engineSettingsButton = MakeButton("设置…", 63, delegate { ShowEngineSettings(this); }); engineSettingsButton.Name = "EngineSettings"; engineSettingsButton.Location = new Point(201, 0); engineSettingsButton.Height = 30;
             profileRow.Controls.Add(profileLabel); profileRow.Controls.Add(engineSettingsButton); side.Controls.Add(profileRow);
-            difficultyBox = Combo(new string[] { "快速 · 16 次搜索", "标准 · 64 次搜索", "深入 · 256 次搜索", "自定义…" }); difficultyBox.SelectedIndex = 1; difficultyBox.Name = "SearchLevel";
+            difficultyBox = Combo(SearchDepth.Choices()); difficultyBox.SelectedIndex = selectedDepthIndex; difficultyBox.Name = "SearchLevel";
             difficultyBox.DropDownWidth = 340;
-            difficultyBox.SelectedIndexChanged += delegate { if (!updating && difficultyBox.SelectedIndex != 3) selectedDepthIndex = difficultyBox.SelectedIndex; };
+            difficultyBox.SelectedIndexChanged += delegate { if (!updating && difficultyBox.SelectedIndex >= 0 && difficultyBox.SelectedIndex != SearchDepth.CustomIndex) selectedDepthIndex = difficultyBox.SelectedIndex; };
             difficultyBox.SelectionChangeCommitted += OnDepthSelected;
-            tooltips.SetToolTip(difficultyBox, "选择自定义，可输入搜索次数或持续思考，手动停止。");
+            tooltips.SetToolTip(difficultyBox, "GPU 默认 2048 次；更高搜索量需要更多等待时间。选择自定义可输入其他次数，或持续思考直到手动停止。");
             side.Controls.Add(Field("计算深度", difficultyBox));
             automaticBox = new CheckBox { Text = "AI 自动应手", Checked = true, Width = 264, Height = 27, Margin = new Padding(0, 0, 0, 4), ForeColor = ink, Name = "AutomaticReply" };
             automaticBox.CheckedChanged += delegate { if (!updating) { if (automaticBox.Checked) MaybeAutoMove(); else if (thinking) CancelAnalysis(); } };
@@ -187,7 +189,7 @@ namespace GoDesk
         private ComboBox Combo(string[] items)
         {
             ComboBox b = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, Width = 197, Height = 29, BackColor = Color.White, ForeColor = ink };
-            b.Items.AddRange(items); b.SelectedIndex = 0; return b;
+            b.Items.AddRange(items); if (b.Items.Count > 0) b.SelectedIndex = 0; return b;
         }
         private Panel Field(string title, Control control)
         {
@@ -208,7 +210,7 @@ namespace GoDesk
 
         private Stone HumanColor { get { return humanBox.SelectedIndex == 1 ? Stone.White : Stone.Black; } }
         private bool HumanTurn { get { return humanBox.SelectedIndex == 2 || game.ToPlay == HumanColor; } }
-        private long Visits { get { return selectedDepthIndex == 3 ? (continuousDepth ? 0 : customVisits) : selectedDepthIndex == 0 ? 16 : selectedDepthIndex == 2 ? 256 : 64; } }
+        private long Visits { get { return selectedDepthIndex == SearchDepth.CustomIndex ? (continuousDepth ? 0 : customVisits) : SearchDepth.PresetVisits(selectedDepthIndex); } }
 
         private void InstallEngine(EngineSettings profile)
         {
@@ -245,38 +247,73 @@ namespace GoDesk
 
         private bool ShowEngineSettings(IWin32Window owner)
         {
-            using (Form dialog = new Form { Name = "EngineModelSettings", Text = "引擎 / 模型设置", ClientSize = new Size(660, 390), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
+            using (Form dialog = new Form { Name = "EngineModelSettings", Text = "引擎 / 模型设置", ClientSize = new Size(710, 502), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
             {
                 Label backendLabel = new Label { Text = "计算后端", Location = new Point(22, 23), Size = new Size(100, 27) };
-                ComboBox backend = Combo(new string[] { "CPU · 内置便携引擎", "GPU · OpenCL 套件", "自定义 · 本地 KataGo" }); backend.Name = "EngineBackend"; backend.Location = new Point(128, 19); backend.Width = 510;
+                ComboBox backend = Combo(new string[] { "CPU · 内置便携引擎", EngineSettings.GpuBackendDescription + " 套件", "自定义 · 本地 KataGo" }); backend.Name = "EngineBackend"; backend.Location = new Point(128, 19); backend.Width = 560;
                 Label executableLabel = new Label { Text = "KataGo 程序（.exe）", Location = new Point(22, 66), Size = new Size(310, 25) };
-                TextBox executable = new TextBox { Name = "EnginePath", Location = new Point(22, 93), Width = 537 };
-                Label modelLabel = new Label { Text = "神经网络模型（.bin.gz / .bin）", Location = new Point(22, 138), Size = new Size(420, 25) };
-                TextBox model = new TextBox { Name = "ModelPath", Location = new Point(22, 165), Width = 537 };
+                TextBox executable = new TextBox { Name = "EnginePath", Location = new Point(22, 93), Width = 587 };
+                Label modelLabel = new Label { Text = "神经网络模型 · 日期按官方上传 / 收录记录标注", Location = new Point(22, 138), Size = new Size(666, 25) };
+                ComboBox modelChoice = Combo(new string[0]); modelChoice.Name = "ModelSelection"; modelChoice.Location = new Point(22, 166); modelChoice.Width = 666; modelChoice.DropDownWidth = 720;
+                Label modelDetails = new Label { Name = "ModelDetails", Location = new Point(22, 204), Size = new Size(666, 48), ForeColor = muted };
+                Label modelPathLabel = new Label { Text = "模型文件（自定义模型可浏览本地 .bin.gz / .bin）", Location = new Point(22, 262), Size = new Size(666, 25) };
+                TextBox model = new TextBox { Name = "ModelPath", Location = new Point(22, 292), Width = 587 };
                 Button browseEngine = MakeButton("浏览…", 72, delegate
                 {
                     using (OpenFileDialog file = new OpenFileDialog { Title = "选择本地 KataGo 程序", Filter = "KataGo 程序 (*.exe)|*.exe|所有文件 (*.*)|*.*" })
                         if (file.ShowDialog(dialog) == DialogResult.OK) executable.Text = file.FileName;
-                }); browseEngine.Name = "BrowseEngine"; browseEngine.Location = new Point(566, 90); browseEngine.Height = 30;
+                }); browseEngine.Name = "BrowseEngine"; browseEngine.Location = new Point(616, 90); browseEngine.Height = 30;
                 Button browseModel = MakeButton("浏览…", 72, delegate
                 {
                     using (OpenFileDialog file = new OpenFileDialog { Title = "选择 KataGo 神经网络模型", Filter = "KataGo 模型 (*.bin.gz;*.bin)|*.bin.gz;*.bin|所有文件 (*.*)|*.*" })
-                        if (file.ShowDialog(dialog) == DialogResult.OK) model.Text = file.FileName;
-                }); browseModel.Name = "BrowseModel"; browseModel.Location = new Point(566, 162); browseModel.Height = 30;
-                Label explanation = new Label { Name = "EngineSettingsExplanation", Location = new Point(22, 213), Size = new Size(616, 58), ForeColor = muted };
-                Label error = new Label { Name = "EngineSettingsError", Location = new Point(22, 276), Size = new Size(616, 57), ForeColor = Color.FromArgb(170, 68, 48) };
-                EngineSettings[] drafts = new EngineSettings[] { EngineSettings.CreateCpu(), EngineSettings.CreateGpu(), new EngineSettings { Backend = "custom", EnginePath = "", ModelPath = "" } };
+                        if (file.ShowDialog(dialog) == DialogResult.OK) { modelChoice.SelectedIndex = modelChoice.Items.Count - 1; model.Text = file.FileName; }
+                }); browseModel.Name = "BrowseModel"; browseModel.Location = new Point(616, 289); browseModel.Height = 30;
+                Label explanation = new Label { Name = "EngineSettingsExplanation", Location = new Point(22, 335), Size = new Size(666, 60), ForeColor = muted };
+                Label error = new Label { Name = "EngineSettingsError", Location = new Point(22, 397), Size = new Size(666, 50), ForeColor = Color.FromArgb(170, 68, 48) };
+                EngineSettings[] drafts = new EngineSettings[] { EngineSettings.CreateCpu(), EngineSettings.CreateGpu(), new EngineSettings { Backend = "custom", EnginePath = "", ModelPath = "", ModelId = "" } };
                 int previous = engineSettings.Backend == "gpu" ? 1 : engineSettings.Backend == "custom" ? 2 : 0;
                 drafts[previous] = engineSettings.Clone();
                 backend.SelectedIndex = previous;
+                bool refreshing = false;
+                Action refreshModelDetails = delegate
+                {
+                    ModelCatalogEntry entry = modelChoice.SelectedItem as ModelCatalogEntry;
+                    model.ReadOnly = entry != null;
+                    modelDetails.Text = entry == null ? "自定义模型：请选择与你使用的 KataGo 引擎兼容的本地模型文件。" :
+                        entry.ModelName + "\r\n" + entry.Label + (entry.Id == ModelCatalog.StrongestId ? "；截至 2026-10-20 官方评分可信的最强模型。" : "；保留旧版选择。");
+                    tooltips.SetToolTip(modelDetails, modelDetails.Text);
+                };
                 Action refresh = delegate
                 {
+                    refreshing = true;
                     EngineSettings draft = drafts[backend.SelectedIndex];
                     executable.Text = draft.EnginePath ?? ""; model.Text = draft.ModelPath ?? "";
-                    explanation.Text = backend.SelectedIndex == 0 ? "CPU 留空时使用内置 KataGo 与 g170 b10 模型（2020）；可另选本地模型。\r\n设置确认后应用，棋局保持不变。" : backend.SelectedIndex == 1 ? "GPU 使用 OpenCL，引擎与模型均从所选文件加载。套件默认使用现代 b18 模型。\r\n请确保显卡驱动可用；加载失败会显示原因，可在这里修正路径。" : "选择本地 KataGo 程序及对应模型文件。\r\n引擎需支持 KataGo analysis JSON 协议；设置确认后应用。";
+                    modelChoice.Items.Clear();
+                    ModelCatalogEntry[] entries = backend.SelectedIndex == 0 ? new ModelCatalogEntry[] { ModelCatalog.Find(ModelCatalog.LegacyCpuId) } : ModelCatalog.GpuModels;
+                    int selected = -1;
+                    foreach (ModelCatalogEntry entry in entries)
+                    {
+                        modelChoice.Items.Add(entry);
+                        if (entry.Id == draft.ModelId) selected = modelChoice.Items.Count - 1;
+                    }
+                    modelChoice.Items.Add("自定义模型文件…");
+                    modelChoice.SelectedIndex = selected >= 0 ? selected : modelChoice.Items.Count - 1;
+                    refreshModelDetails();
+                    explanation.Text = backend.SelectedIndex == 0 ? "内置 b10 轻量模型用于 CPU 便携运行；GPU 模型请在上方切换计算后端后选择。\r\n确认后应用；当前棋局保留。" : backend.SelectedIndex == 1 ? "GPU 套件默认选择最强模型；可直接切换 b18，或浏览其他本地模型。\r\n显卡首次调优与加载较慢，请耐心等待。确认后取消旧计算，保留棋局。" : "选择本地 KataGo 程序，可搭配套件模型或自定义模型。\r\n引擎需支持所选模型及 KataGo analysis JSON 协议。";
                     error.Text = "";
+                    refreshing = false;
                 };
                 refresh();
+                modelChoice.SelectedIndexChanged += delegate
+                {
+                    if (refreshing) return;
+                    EngineSettings draft = drafts[backend.SelectedIndex];
+                    ModelCatalogEntry entry = modelChoice.SelectedItem as ModelCatalogEntry;
+                    draft.ModelId = entry == null ? "" : entry.Id;
+                    draft.ModelPath = entry == null ? "" : entry.Embedded ? "" : entry.RelativePath;
+                    model.Text = draft.ModelPath;
+                    refreshModelDetails(); error.Text = "";
+                };
                 backend.SelectedIndexChanged += delegate
                 {
                     drafts[previous].EnginePath = executable.Text; drafts[previous].ModelPath = model.Text;
@@ -288,9 +325,9 @@ namespace GoDesk
                     selected.EnginePath = executable.Text.Trim(); selected.ModelPath = model.Text.Trim();
                     try { ApplyEngineSettings(selected); dialog.DialogResult = DialogResult.OK; }
                     catch (Exception ex) { error.Text = ex.Message; }
-                }); ok.Name = "EngineSettingsOK"; ok.Location = new Point(550, 342);
-                Button cancel = MakeButton("取消", 88, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "EngineSettingsCancel"; cancel.Location = new Point(452, 342);
-                dialog.Controls.AddRange(new Control[] { backendLabel, backend, executableLabel, executable, browseEngine, modelLabel, model, browseModel, explanation, error, ok, cancel });
+                }); ok.Name = "EngineSettingsOK"; ok.Location = new Point(600, 455);
+                Button cancel = MakeButton("取消", 88, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "EngineSettingsCancel"; cancel.Location = new Point(502, 455);
+                dialog.Controls.AddRange(new Control[] { backendLabel, backend, executableLabel, executable, browseEngine, modelLabel, modelChoice, modelDetails, modelPathLabel, model, browseModel, explanation, error, ok, cancel });
                 dialog.AcceptButton = ok; dialog.CancelButton = cancel;
                 return dialog.ShowDialog(owner) == DialogResult.OK;
             }
@@ -299,7 +336,7 @@ namespace GoDesk
         private void OnDepthSelected(object sender, EventArgs e)
         {
             if (updating) return;
-            if (difficultyBox.SelectedIndex != 3) { selectedDepthIndex = difficultyBox.SelectedIndex; return; }
+            if (difficultyBox.SelectedIndex != SearchDepth.CustomIndex) { selectedDepthIndex = difficultyBox.SelectedIndex; return; }
             if (!ShowDepthSettings(this))
             {
                 updating = true; difficultyBox.SelectedIndex = selectedDepthIndex; updating = false;
@@ -311,25 +348,25 @@ namespace GoDesk
             using (Form dialog = new Form { Name = "SearchDepthSettings", Text = "计算深度设置", ClientSize = new Size(442, 312), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
             {
                 Label modeLabel = new Label { Text = "计算深度", Location = new Point(22, 21), Size = new Size(90, 27) };
-                ComboBox mode = Combo(new string[] { "快速 · 16 次搜索", "标准 · 64 次搜索", "深入 · 256 次搜索", "自定义" }); mode.Name = "DepthMode"; mode.Location = new Point(118, 18); mode.Width = 300; mode.SelectedIndex = difficultyBox.SelectedIndex;
+                ComboBox mode = Combo(SearchDepth.Choices()); mode.Name = "DepthMode"; mode.Location = new Point(118, 18); mode.Width = 300; mode.SelectedIndex = difficultyBox.SelectedIndex;
                 Label countLabel = new Label { Text = "每步搜索次数", Location = new Point(22, 67), Size = new Size(104, 25) };
                 TextBox count = new TextBox { Name = "CustomVisits", Text = customVisits.ToString(CultureInfo.InvariantCulture), Location = new Point(22, 96), Width = 396, MaxLength = 0 };
                 CheckBox continuous = new CheckBox { Name = "ContinuousDepth", Text = "持续思考，直到手动停止（不限次数）", Checked = continuousDepth, Location = new Point(22, 136), Size = new Size(396, 28) };
                 Label note = new Label { Text = "搜索过程会显示进度；结束思考时采用当前最佳结果。", Location = new Point(22, 176), Size = new Size(396, 37), ForeColor = muted };
                 Label errorLabel = new Label { Name = "DepthError", Location = new Point(22, 212), Size = new Size(396, 49), ForeColor = Color.FromArgb(170, 68, 48) };
-                Action refresh = delegate { bool custom = mode.SelectedIndex == 3; countLabel.Enabled = custom; continuous.Enabled = custom; count.Enabled = custom && !continuous.Checked; errorLabel.Text = ""; };
+                Action refresh = delegate { bool custom = mode.SelectedIndex == SearchDepth.CustomIndex; countLabel.Enabled = custom; continuous.Enabled = custom; count.Enabled = custom && !continuous.Checked; errorLabel.Text = ""; };
                 mode.SelectedIndexChanged += delegate { refresh(); }; continuous.CheckedChanged += delegate { refresh(); }; refresh();
                 Button ok = MakeButton("确定", 88, delegate
                 {
                     long requested = customVisits;
-                    if (mode.SelectedIndex == 3 && !continuous.Checked)
+                    if (mode.SelectedIndex == SearchDepth.CustomIndex && !continuous.Checked)
                     {
                         BigInteger parsed; string error;
                         if (!SearchDepth.TryParse(count.Text, out parsed, out error) || !SearchDepth.TryGetNativeValue(parsed, out requested, out error)) { errorLabel.Text = error; return; }
                     }
                     customVisits = requested; continuousDepth = continuous.Checked;
                     updating = true;
-                    difficultyBox.Items[3] = continuousDepth ? "自定义 · 持续思考" : "自定义 · " + customVisits.ToString("N0", CultureInfo.InvariantCulture) + " 次";
+                    difficultyBox.Items[SearchDepth.CustomIndex] = continuousDepth ? "自定义 · 持续思考" : "自定义 · " + customVisits.ToString("N0", CultureInfo.InvariantCulture) + " 次";
                     difficultyBox.SelectedIndex = mode.SelectedIndex; selectedDepthIndex = mode.SelectedIndex;
                     tooltips.SetToolTip(difficultyBox, difficultyBox.Items[mode.SelectedIndex] + "；选择自定义可修改搜索次数或持续思考。");
                     updating = false;
@@ -574,7 +611,7 @@ namespace GoDesk
         }
         private void ShowHelp()
         {
-            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n选择执白后，AI 会先行；选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度可选自定义，填写每步搜索访问次数。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CPU、GPU 及本地模型。\r\nCPU 内置 g170 b10（2020）；搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n选择执白后，AI 会先行；选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择带日期的模型及自定义文件。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         private void OnShortcut(object sender, KeyEventArgs e)
         {

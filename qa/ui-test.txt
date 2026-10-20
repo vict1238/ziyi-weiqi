@@ -1,5 +1,6 @@
 ﻿PASS
 Product title and About tribute: PASS
+Shared 256/1024/2048/4096/8192/16384 presets; CPU 256 and strongest GPU 2048 defaults: PASS
 Unconfirmed custom selection keeps the committed depth; Cancel restores preset: PASS
 Board hit-test -> human display D16 -> actual KataGo reply; AI/history screen coordinates: PASS
 Engine/model settings cancel + validation + profile swap keep game and user preferences: PASS

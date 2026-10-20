@@ -20,6 +20,20 @@ namespace GoDesk
             report.AppendLine("Product title and About tribute: PASS");
             var board = (BoardControl)form.Controls.Find("GoBoard", true)[0];
             var level = (ComboBox)form.Controls.Find("SearchLevel", true)[0];
+            CheckDepthPresets(form, level);
+            using (var gpuDefaults = new MainForm(EngineSettings.CreateGpu(), false))
+            {
+                Check(gpuDefaults.CurrentEngineSettings.ModelId == ModelCatalog.StrongestId && CurrentVisits(gpuDefaults) == 2048,
+                    "GPU startup must default to the strongest model and 2048 visits");
+                Check(gpuDefaults.CurrentEngineSettings.ModelDescription.Contains("2026-09-25"), "Strongest model date missing from active profile");
+                gpuDefaults.StartPosition = FormStartPosition.Manual;
+                gpuDefaults.Location = new Point(-20000, -20000);
+                gpuDefaults.ShowInTaskbar = false;
+                gpuDefaults.Show(); gpuDefaults.PerformLayout();
+                gpuDefaults.CaptureScreenshot(Path.Combine(outputFolder, "desktop-gpu-defaults.png"));
+                gpuDefaults.Close();
+            }
+            report.AppendLine("Shared 256/1024/2048/4096/8192/16384 presets; CPU 256 and strongest GPU 2048 defaults: PASS");
             CheckCancelledCustomDepth(form, level);
             report.AppendLine("Unconfirmed custom selection keeps the committed depth; Cancel restores preset: PASS");
             level.SelectedIndex = 0;
@@ -32,6 +46,8 @@ namespace GoDesk
             Check(form.CurrentGame.Position == 2, "Physical board hit-test + auto AI reply did not produce two moves");
             Check(form.CurrentGame.Board[3, 15] == Stone.Black, "Hit-test coordinate did not map to display D16");
             Check(form.CurrentGame.Moves[1].Color == Stone.White, "Automatic AI color is incorrect");
+            Check(board.Analysis != null && board.Analysis.Visits >= SearchDepth.PresetVisits(0) && board.Analysis.Visits < 512,
+                "The 256-visit preset was not used for the real AI reply");
             Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains(form.CurrentGame.Moves[1].ToDisplay(19)), "AI move status does not use screen coordinates");
             Call(form, "Navigate", 1);
             Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains("D16"), "History status uses protocol coordinates");
@@ -142,7 +158,7 @@ namespace GoDesk
                 foreach (Form candidate in Application.OpenForms) if (candidate.Name == "SearchDepthSettings") dialog = candidate;
                 if (dialog == null) return;
                 timer.Stop();
-                ((ComboBox)dialog.Controls.Find("DepthMode", true)[0]).SelectedIndex = 3;
+                ((ComboBox)dialog.Controls.Find("DepthMode", true)[0]).SelectedIndex = SearchDepth.CustomIndex;
                 ((TextBox)dialog.Controls.Find("CustomVisits", true)[0]).Text = countText;
                 ((CheckBox)dialog.Controls.Find("ContinuousDepth", true)[0]).Checked = continuousValue;
                 dialog.PerformLayout();
@@ -222,11 +238,19 @@ namespace GoDesk
                 if (dialog == null) return;
                 cancelTimer.Stop();
                 ((ComboBox)dialog.Controls.Find("EngineBackend", true)[0]).SelectedIndex = 1;
+                ComboBox models = (ComboBox)dialog.Controls.Find("ModelSelection", true)[0];
+                Check(models.Items.Count == ModelCatalog.GpuModels.Length + 1 && ((ModelCatalogEntry)models.SelectedItem).Id == ModelCatalog.StrongestId,
+                    "GPU model selection does not default to strongest");
+                Check(((Label)dialog.Controls.Find("ModelDetails", true)[0]).Text.Contains("2026-09-25"), "Strongest model date missing in settings");
+                models.SelectedIndex = 1;
+                Check(((ModelCatalogEntry)models.SelectedItem).Id == ModelCatalog.PreviousGpuId &&
+                    ((Label)dialog.Controls.Find("ModelDetails", true)[0]).Text.Contains("2024-05-26"), "Previous b18 model or its date missing in settings");
+                models.SelectedIndex = 0;
                 TextBox shownEngine = (TextBox)dialog.Controls.Find("EnginePath", true)[0];
                 TextBox shownModel = (TextBox)dialog.Controls.Find("ModelPath", true)[0];
                 string originalEngine = shownEngine.Text, originalModel = shownModel.Text;
                 shownEngine.Text = @"gpu\katago.exe";
-                shownModel.Text = @"gpu\model.bin.gz";
+                shownModel.Text = ModelCatalog.Find(ModelCatalog.StrongestId).RelativePath;
                 using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
                 {
                     dialog.DrawToBitmap(bitmap, new Rectangle(Point.Empty, dialog.Size));
@@ -235,6 +259,7 @@ namespace GoDesk
                 shownEngine.Text = originalEngine;
                 shownModel.Text = originalModel;
                 ((ComboBox)dialog.Controls.Find("EngineBackend", true)[0]).SelectedIndex = 2;
+                models.SelectedIndex = models.Items.Count - 1;
                 ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text = @"Z:\missing\katago.exe";
                 ((TextBox)dialog.Controls.Find("ModelPath", true)[0]).Text = @"Z:\missing\model.bin.gz";
                 ((Button)dialog.Controls.Find("EngineSettingsCancel", true)[0]).PerformClick();
@@ -242,7 +267,7 @@ namespace GoDesk
             try { cancelTimer.Start(); Check(!(bool)Call(form, "ShowEngineSettings", form), "Cancel confirmed engine settings"); }
             finally { cancelTimer.Dispose(); }
             EngineSettings afterCancel = form.CurrentEngineSettings;
-            Check(before.Backend == afterCancel.Backend && before.EnginePath == afterCancel.EnginePath && before.ModelPath == afterCancel.ModelPath && Object.ReferenceEquals(oldEngine, Field(form, "engine")), "Canceled engine settings changed the active profile");
+            Check(before.Backend == afterCancel.Backend && before.ModelId == afterCancel.ModelId && before.EnginePath == afterCancel.EnginePath && before.ModelPath == afterCancel.ModelPath && Object.ReferenceEquals(oldEngine, Field(form, "engine")), "Canceled engine settings changed the active profile");
             Check(form.CurrentGame.ToSgf() == gameBefore, "Canceled engine settings changed the game");
 
             var confirmTimer = new System.Windows.Forms.Timer { Interval = 100 };
@@ -254,18 +279,22 @@ namespace GoDesk
                 confirmTimer.Stop();
                 ComboBox backend = (ComboBox)dialog.Controls.Find("EngineBackend", true)[0];
                 backend.SelectedIndex = 2;
+                ComboBox models = (ComboBox)dialog.Controls.Find("ModelSelection", true)[0];
+                models.SelectedIndex = models.Items.Count - 1;
                 ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text = @"Z:\missing\katago.exe";
                 ((TextBox)dialog.Controls.Find("ModelPath", true)[0]).Text = @"Z:\missing\model.bin.gz";
                 ((Button)dialog.Controls.Find("EngineSettingsOK", true)[0]).PerformClick();
                 Check(!String.IsNullOrEmpty(((Label)dialog.Controls.Find("EngineSettingsError", true)[0]).Text), "Missing custom engine files were accepted");
                 backend.SelectedIndex = 0;
+                models.SelectedIndex = 0;
+                Check(((Label)dialog.Controls.Find("ModelDetails", true)[0]).Text.Contains("2020"), "Legacy CPU model year missing in settings");
                 ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text = "";
                 ((TextBox)dialog.Controls.Find("ModelPath", true)[0]).Text = "";
                 ((Button)dialog.Controls.Find("EngineSettingsOK", true)[0]).PerformClick();
             };
             try { confirmTimer.Start(); Check((bool)Call(form, "ShowEngineSettings", form), "Valid CPU settings were not applied"); }
             finally { confirmTimer.Dispose(); }
-            Check(form.CurrentEngineSettings.Backend == "cpu" && !Object.ReferenceEquals(oldEngine, Field(form, "engine")), "Confirmed settings did not replace the engine");
+            Check(form.CurrentEngineSettings.Backend == "cpu" && form.CurrentEngineSettings.ModelId == ModelCatalog.LegacyCpuId && !Object.ReferenceEquals(oldEngine, Field(form, "engine")), "Confirmed settings did not replace the engine");
             Check(form.CurrentGame.ToSgf() == gameBefore && ((BoardControl)form.Controls.Find("GoBoard", true)[0]).Analysis == null, "Profile swap reset the game or kept stale analysis");
             Label engineStatus = (Label)Field(form, "engineLabel");
             string currentStatus = engineStatus.Text;
@@ -278,8 +307,8 @@ namespace GoDesk
         private static void CheckCancelledCustomDepth(MainForm form, ComboBox level)
         {
             level.SelectedIndex = 1;
-            level.SelectedIndex = 3;
-            Check((long)typeof(MainForm).GetProperty("Visits", PrivateInstance).GetValue(form, null) == 64, "Provisional custom selection changed the active budget");
+            level.SelectedIndex = SearchDepth.CustomIndex;
+            Check(CurrentVisits(form) == SearchDepth.PresetVisits(1), "Provisional custom selection changed the active budget");
             var timer = new System.Windows.Forms.Timer { Interval = 100 };
             timer.Tick += delegate
             {
@@ -293,9 +322,41 @@ namespace GoDesk
             {
                 timer.Start();
                 Call(form, "OnDepthSelected", level, EventArgs.Empty);
-                Check(level.SelectedIndex == 1 && (long)typeof(MainForm).GetProperty("Visits", PrivateInstance).GetValue(form, null) == 64, "Cancel changed the saved search depth");
+                Check(level.SelectedIndex == 1 && CurrentVisits(form) == SearchDepth.PresetVisits(1), "Cancel changed the saved search depth");
             }
             finally { timer.Dispose(); }
+        }
+
+        private static long CurrentVisits(MainForm form)
+        {
+            return (long)typeof(MainForm).GetProperty("Visits", PrivateInstance).GetValue(form, null);
+        }
+
+        private static void CheckDepthPresets(MainForm form, ComboBox level)
+        {
+            Check(CurrentVisits(form) == SearchDepth.PresetVisits(SearchDepth.CpuDefaultIndex), "CPU startup budget should be 256");
+            Check(level.Items.Count == SearchDepth.PresetCount + 1, "Main depth list lost shared presets");
+            for (int i = 0; i < SearchDepth.PresetCount; i++)
+            {
+                level.SelectedIndex = i;
+                Check(CurrentVisits(form) == SearchDepth.PresetVisits(i), "Main depth preset maps to a different request budget");
+            }
+            var timer = new System.Windows.Forms.Timer { Interval = 100 };
+            timer.Tick += delegate
+            {
+                Form dialog = null;
+                foreach (Form candidate in Application.OpenForms) if (candidate.Name == "SearchDepthSettings") dialog = candidate;
+                if (dialog == null) return;
+                timer.Stop();
+                ComboBox choices = (ComboBox)dialog.Controls.Find("DepthMode", true)[0];
+                Check(choices.Items.Count == level.Items.Count, "Settings and main depth lists disagree");
+                for (int i = 0; i < SearchDepth.PresetCount; i++) Check(choices.Items[i].Equals(level.Items[i]), "Settings and main preset labels disagree");
+                choices.SelectedIndex = SearchDepth.GpuDefaultIndex;
+                ((Button)dialog.Controls.Find("DepthOK", true)[0]).PerformClick();
+            };
+            try { timer.Start(); Check((bool)Call(form, "ShowDepthSettings", form), "Preset depth setting not confirmed"); }
+            finally { timer.Dispose(); }
+            Check(CurrentVisits(form) == 2048 && level.SelectedIndex == SearchDepth.GpuDefaultIndex, "Preset confirmation did not use shared 2048 budget");
         }
 
         private static async Task WaitProgress(MainForm form, BoardControl board)

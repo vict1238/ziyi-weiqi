@@ -308,7 +308,7 @@ namespace GoDesk
         public string ToSgf()
         {
             StringBuilder b = new StringBuilder();
-            b.Append("(;GM[1]FF[4]CA[UTF-8]AP[梓懿围棋:1.2]RU[")
+            b.Append("(;GM[1]FF[4]CA[UTF-8]AP[梓懿围棋:1.3]RU[")
                 .Append(rules == "japanese" ? "Japanese" : "Chinese").Append("]SZ[").Append(size)
                 .Append("]KM[").Append(komi.ToString("0.################", CultureInfo.InvariantCulture)).Append(']');
             int blacks = 0, whites = 0;

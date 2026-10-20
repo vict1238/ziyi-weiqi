@@ -1,0 +1,16 @@
+KataGo 1.18.1 OpenCL / RTX 4060 Laptop GPU / 8188 MiB VRAM
+Model: kata1-tf3-b11c768-s11003M-d5973M-7gres
+Model upload date (official UTC): 2026-09-25
+Model bytes: 262039869
+SHA256: 93BDB63A3BFAE4A70DB0CB5265287495ECFC10B1BA1CC6814FEEBA1CDF055871
+Native model identity: version 17; 70442025 params; FP16 Tensor Cores enabled
+Configuration: 16 search threads; NN max batch 32; one analysis thread
+Measurement: two 19x19 positions; NN cache cleared before each timed query
+First cold OpenCL tuning observed: approximately 240 seconds
+Cached initialization: 3.219 seconds
+Peak total GPU usage during probe: 2546 MiB, includes desktop and other applications
+Target visits 256: 1.734, 1.719 seconds
+Target visits 1024: 6.422, 5.14 seconds
+Target visits 2048: 11.797, 9.719 seconds
+Target visits 4096: 21.953, 22.375 seconds
+PASS: native analysis completed all 9 queries. Timings are measurements for two positions, not a guaranteed per-move limit.

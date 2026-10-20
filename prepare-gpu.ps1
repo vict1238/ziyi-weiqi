@@ -1,6 +1,6 @@
 ﻿param(
     [string]$SourceCache = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'GoDesk\downloads'),
-    [string]$Destination = (Join-Path $PSScriptRoot 'release\梓懿围棋-v1.2.0\gpu')
+    [string]$Destination = (Join-Path $PSScriptRoot 'release\梓懿围棋-v1.3.0\gpu')
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -13,9 +13,28 @@ New-Item -ItemType Directory -Path $cacheRoot,$destinationRoot -Force | Out-Null
 $engineName = 'katago-v1.18.1-opencl-windows-x64.zip'
 $engineUrl = 'https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-opencl-windows-x64.zip'
 $engineSha = '1710DB1903AB921AA6837A9599C8474F8A59F057650217C5D9BC125EE393A9FF'
-$modelName = 'kata1-b18c384nbt-s9996604416-d4316597426.bin.gz'
-$modelUrl = 'https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz'
-$modelSha = '9D7A6AFED8FF5B74894727E156F04F0CD36060A24824892008FBB6E0CBA51F1D'
+$models = @(
+    [ordered]@{
+        id = 'kata1-tf3-b11c768-s11003M-d5973M-7gres'
+        file = 'models/kata1-tf3-b11c768-s11003M-d5973M-7gres.bin.gz'
+        bytes = 262039869
+        sha256 = '93BDB63A3BFAE4A70DB0CB5265287495ECFC10B1BA1CC6814FEEBA1CDF055871'
+        uploadedAtUtc = '2026-09-25T02:04:37Z'
+        date = '2026-09-25'
+        dateKind = 'official-upload'
+        recommended = $true
+    },
+    [ordered]@{
+        id = 'kata1-b18c384nbt-s9996604416-d4316597426'
+        file = 'models/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz'
+        bytes = 97898094
+        sha256 = '9D7A6AFED8FF5B74894727E156F04F0CD36060A24824892008FBB6E0CBA51F1D'
+        uploadedAtUtc = '2024-05-26T12:47:48Z'
+        date = '2024-05-26'
+        dateKind = 'official-upload'
+        recommended = $false
+    }
+)
 
 function Assert-PinnedFile([string]$Path, [long]$Bytes, [string]$Sha256) {
     if ((Get-Item -LiteralPath $Path).Length -ne $Bytes) { throw "文件长度校验失败：$Path" }
@@ -46,7 +65,13 @@ foreach ($notice in @('README.md','KataGo-LICENSE.txt','KataGo-CONTRIBUTORS.txt'
 }
 
 $archive = Get-PinnedAsset $engineName $engineUrl 6004137 $engineSha
-$model = Get-PinnedAsset $modelName $modelUrl 97898094 $modelSha
+$modelSources = @{}
+foreach ($model in $models) {
+    $modelName = $model.id + '.bin.gz'
+    $modelUrl = 'https://media.katagotraining.org/uploaded/networks/models/kata1/' + $modelName
+    $model['url'] = $modelUrl
+    $modelSources[$model.id] = Get-PinnedAsset $modelName $modelUrl $model.bytes $model.sha256
+}
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $staging = Join-Path $cacheRoot ('gpu-stage-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $staging -Force | Out-Null
@@ -71,8 +96,12 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $staging 'katago.exe'))) { throw '官方压缩包中未找到 katago.exe。' }
     # Keep the entire upstream runtime, including every DLL and configuration example.
     Get-ChildItem -LiteralPath $staging -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $destinationRoot -Recurse -Force }
-    Copy-Item -LiteralPath $model -Destination (Join-Path $destinationRoot 'model.bin.gz') -Force
-    Assert-PinnedFile (Join-Path $destinationRoot 'model.bin.gz') 97898094 $modelSha
+    New-Item -ItemType Directory -Path (Join-Path $destinationRoot 'models') -Force | Out-Null
+    foreach ($model in $models) {
+        $modelOutput = Join-Path $destinationRoot $model.file
+        Copy-Item -LiteralPath $modelSources[$model.id] -Destination $modelOutput -Force
+        Assert-PinnedFile $modelOutput $model.bytes $model.sha256
+    }
     $licenseOutput = Join-Path $destinationRoot 'licenses'
     New-Item -ItemType Directory -Path $licenseOutput -Force | Out-Null
     Get-ChildItem -LiteralPath $noticeRoot -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $licenseOutput -Force }
@@ -82,13 +111,17 @@ try {
         engineVersion = '1.18.1'
         engineArchiveSha256 = $engineSha
         engineUrl = $engineUrl
-        modelName = 'kata1-b18c384nbt-s9996604416-d4316597426'
-        modelFile = 'model.bin.gz'
-        modelSha256 = $modelSha
-        modelUrl = $modelUrl
-        networkDate = '2024-05-26'
+        modelName = $models[0].id
+        modelFile = $models[0].file
+        modelSha256 = $models[0].sha256
+        modelUrl = $models[0].url
+        networkDate = $models[0].date
+        networkDateKind = 'official-upload'
+        strongestCheckedAt = '2026-10-20'
+        source = 'https://katagotraining.org/networks/'
+        models = $models
     }
-    [IO.File]::WriteAllText((Join-Path $destinationRoot 'runtime.json'), ($metadata | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText((Join-Path $destinationRoot 'runtime.json'), ($metadata | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
 }
 finally {
     # Only remove the unique extraction directory created inside the chosen cache.
@@ -99,4 +132,4 @@ finally {
 }
 
 Write-Host 'GPU 套件已准备完成。保持 gpu 文件夹与梓懿围棋.exe 相邻；首次 OpenCL 调优可能需要几分钟。'
-[PSCustomObject]@{ Destination = $destinationRoot; Backend = 'OpenCL'; EngineVersion = '1.18.1'; Model = $modelName; ModelSha256 = $modelSha }
+[PSCustomObject]@{ Destination = $destinationRoot; Backend = 'OpenCL'; EngineVersion = '1.18.1'; DefaultModel = $models[0].id; Models = $models.Count }

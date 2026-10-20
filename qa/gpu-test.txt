@@ -1,8 +1,8 @@
 ﻿PASS
-GPU profile: GPU · OpenCL · kata1-b18c384nbt-s9996604416-d4316597426
-19x19 real KataGo analysis + ownership + legal move: R17; 5.28s
+GPU profile: GPU · OpenCL · tf3-b11c768 最强模型 · 2026-09-25（官方上传）
+19x19 real KataGo analysis + ownership + legal move: R4; 193.13s
 9x9 SGF setup stones + initial player + legal move: G5
 Cancellation: PASS
 Engine remains usable after cancellation: E5
 Custom 3,000,000,000 visits accepted without integer overflow + live progress + cancel: PASS
-Continuous search -> Stop -> usable final best move and territory: Q16
+Continuous search -> Stop -> usable final best move and territory: R16

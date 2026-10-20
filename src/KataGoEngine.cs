@@ -226,7 +226,7 @@ namespace GoDesk
                 string selectedBackend = settings.NormalizedBackend;
                 bool cpu = selectedBackend == "cpu";
                 SetStatus(cpu ? "正在加载 CPU 围棋模型…" : selectedBackend == "gpu" ?
-                    "正在加载 GPU 模型；首次 OpenCL 调优可能需要数分钟，可取消…" : "正在加载自定义引擎与模型；可取消…");
+                    "正在加载 " + EngineSettings.GpuBackendDescription + " 模型；首次初始化可能需要数分钟，可取消…" : "正在加载自定义引擎与模型；可取消…");
                 int timeoutMilliseconds = cpu ? 90000 : 300000;
                 Task completed = await Task.WhenAny(startup.Task, Task.Delay(timeoutMilliseconds, cancellation.Token)).ConfigureAwait(false);
                 cancellation.Token.ThrowIfCancellationRequested();

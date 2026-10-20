@@ -1,6 +1,6 @@
 # 梓懿围棋 — bundled third-party software
 
-梓懿围棋 uses local KataGo engines on 64-bit Windows with .NET Framework 4.8. The standalone EXE embeds the CPU runtime below; the GPU portable package also includes the OpenCL runtime and kata1 model documented here. Gameplay needs no account, network service, or Python. The CPU Eigen build does not require AVX2; GPU use requires an OpenCL-capable graphics driver, with no CUDA installation. Upstream binaries are redistributed unchanged with their dependency trees.
+梓懿围棋 uses local KataGo engines on 64-bit Windows with .NET Framework 4.8. The standalone EXE embeds the CPU runtime below; the GPU portable package also includes the OpenCL runtime and both kata1 models documented here. Gameplay needs no account, network service, or Python. The CPU Eigen build does not require AVX2; GPU use requires an OpenCL-capable graphics driver, with no CUDA installation. Upstream binaries are redistributed unchanged with their dependency trees.
 
 ## GPU package: KataGo 1.18.1 OpenCL
 
@@ -11,15 +11,24 @@
 - KataGo is MIT licensed. Original version-specific `LICENSE`, `CONTRIBUTORS`, release README, CLBlast Apache 2.0 license, half 2.2.0 MIT license, tclap 1.2.5 MIT notice and bzip2 notice are preserved under [gpu-licenses](gpu-licenses). Common dependency notices are included there as well.
 - Microsoft runtime DLLs retain their redistributable license; an original copy of the terms page is retained as `gpu-licenses/Microsoft-VisualC-Runtime-License.html`.
 
-### GPU kata1 b18 model
+### GPU kata1 tf3 default model
+
+- Original model: `kata1-tf3-b11c768-s11003M-d5973M-7gres.bin.gz`, uploaded on 2026-09-25 02:04:37 UTC; 11 Transformer blocks, 768 channels, approximately 70.44 million parameters.
+- Selection: the official training site's strongest confidently-rated public network when checked on 2026-10-20, https://katagotraining.org/networks/ . The bundled selection is fixed for this application version.
+- Official download: https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-tf3-b11c768-s11003M-d5973M-7gres.bin.gz .
+- Size: 262,039,869 bytes. SHA-256: `93BDB63A3BFAE4A70DB0CB5265287495ECFC10B1BA1CC6814FEEBA1CDF055871`.
+- License: KataGo Neural Network License, the same original full notice retained in `gpu-licenses/Model-LICENSE.html` and `gpu-licenses/Model-LICENSE.txt` for both kata1 models.
+- The unchanged model file is retained under its original name in `gpu/models/`; `gpu/runtime.json` records the model ID, upload date, source, size and SHA-256.
+
+### Previous GPU kata1 b18 model
 
 - Original model: `kata1-b18c384nbt-s9996604416-d4316597426.bin.gz`, published 2024-05-26; 18 nested-bottleneck blocks, 384 channels.
 - Official download: https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz .
 - Size: 97,898,094 bytes. SHA-256: `9D7A6AFED8FF5B74894727E156F04F0CD36060A24824892008FBB6E0CBA51F1D`.
 - License: [KataGo Neural Network License](https://katagotraining.org/network_license/), with MIT-style permission and required retention of its copyright and permission notice. The complete original page is retained in `gpu-licenses/Model-LICENSE.html`, and the applicable full notice in `gpu-licenses/Model-LICENSE.txt`. The page was retrieved on 2026-10-20 and its original copyright text is preserved.
-- The model bytes are copied unchanged to `gpu/model.bin.gz`; `gpu/runtime.json` records the original model identity, SHA-256, date, backend and engine version. The CPU g170 model below has its own CC0 dedication.
+- The model bytes are copied unchanged under their original name in `gpu/models/`; `gpu/runtime.json` records both models' original identity, SHA-256, upload date, backend and engine version. The CPU g170 model below has its own CC0 dedication.
 
-The source distribution contains the pinned preparation script and notices; it downloads the GPU runtime/model on demand. The GPU portable distribution includes the ready-to-run files and their notices in `gpu/licenses`. See [GPU notice index](gpu-licenses/README.md) for original license sources.
+The source distribution contains the pinned preparation script and notices; it downloads the GPU runtime/models on demand. The GPU portable distribution includes the ready-to-run files and their notices in `gpu/licenses`. See [GPU notice index](gpu-licenses/README.md) for original license sources.
 
 ## KataGo 1.14.1
 
@@ -39,7 +48,7 @@ The executable uses Eigen on the CPU. The portable upstream DLL set is bundled a
 - Official download: https://katagoarchive.org/g170/neuralnets/g170e-b10c128-s1141046784-d204142634.bin.gz
 - Training history: https://katagoarchive.org/g170/neuralnets/README.txt
 - License: CC0 1.0 public domain dedication by Jane Street and David J. Wu, https://katagoarchive.org/g170/LICENSE.txt . Original notice retained in `engine-assets/licenses/Model-LICENSE.txt`.
-- This compact 2020 model is chosen for portable CPU responsiveness. Search counts are actual engine visits, not a claimed human rank.
+- This compact 2020 model is retained for portable CPU responsiveness. The matching training-checkpoint counters were recorded in the official kata1 catalog on 2020-11-28; the UI identifies that as the catalog date, not the original training completion date. Search counts are actual engine visits, not a claimed human rank.
 
 ## Packaged file checksums
 

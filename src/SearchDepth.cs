@@ -12,6 +12,27 @@ namespace GoDesk
     {
         // KataGo 1.14.1 analysis protocol: maxVisits is an integer in [1, 2^50].
         public const long NativeMaximumVisits = 1125899906842624L;
+        private static readonly long[] presets = new long[] { 256, 1024, 2048, 4096, 8192, 16384 };
+        public const int CpuDefaultIndex = 0;
+        public const int GpuDefaultIndex = 2;
+        public static int PresetCount { get { return presets.Length; } }
+        public static int CustomIndex { get { return presets.Length; } }
+
+        public static int DefaultIndex(bool gpu) { return gpu ? GpuDefaultIndex : CpuDefaultIndex; }
+
+        public static long PresetVisits(int index)
+        {
+            if (index < 0 || index >= presets.Length) throw new ArgumentOutOfRangeException("index");
+            return presets[index];
+        }
+
+        public static string[] Choices()
+        {
+            string[] labels = new string[presets.Length + 1];
+            for (int i = 0; i < presets.Length; i++) labels[i] = presets[i].ToString("N0", CultureInfo.InvariantCulture) + " 次搜索";
+            labels[CustomIndex] = "自定义…";
+            return labels;
+        }
 
         public static bool TryParse(string text, out BigInteger visits, out string error)
         {
@@ -27,7 +48,7 @@ namespace GoDesk
             {
                 if (value[i] < '0' || value[i] > '9')
                 {
-                    error = "搜索次数必须是大于 0 的整数，例如 64、256、10000。";
+                    error = "搜索次数必须是大于 0 的整数，例如 256、4096、10000。";
                     return false;
                 }
             }
