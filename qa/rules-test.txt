@@ -1,3 +1,6 @@
 ﻿PASS
-围棋规则与 SGF 测试通过：156 项断言。
+围棋规则与 SGF 测试通过：187 项断言。
 自定义搜索次数测试通过：38 项断言。
+棋盘显示坐标测试通过：1323 项断言。
+PASS 23 engine settings assertions (no preference writes).
+落子音效检查通过：17 项断言（不播放可听音、不写偏好）。

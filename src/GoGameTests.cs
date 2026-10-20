@@ -17,6 +17,7 @@ namespace GoDesk
             TestHistoryAndPasses();
             TestHandicap();
             TestSgf();
+            TestFoxSgfKomi();
             return "围棋规则与 SGF 测试通过：" + checks + " 项断言。";
         }
 
@@ -168,12 +169,12 @@ namespace GoDesk
                 "中国全局同形规则禁止三劫循环复原");
             Check(superko.Position == 5 && superko.WhiteCaptures == 2, "被禁止的循环不改变棋局");
 
-            foreach (double allowed in new double[] { -400, -100, 0, 7.5, 100, 400 })
+            foreach (double allowed in new double[] { -150, -100, 0, 7.5, 100, 150 })
             {
                 GoGame bounded = new GoGame(9, allowed);
                 Check(GoGame.FromSgf(bounded.ToSgf()).Komi == allowed, "合法贴目边界往返：" + allowed);
             }
-            foreach (double invalid in new double[] { -400.5, 400.5, 6.25, 6.2, -0.25, Double.NaN, Double.PositiveInfinity, Double.NegativeInfinity })
+            foreach (double invalid in new double[] { -150.5, 150.5, 375, 6.25, 6.2, -0.25, Double.NaN, Double.PositiveInfinity, Double.NegativeInfinity })
             {
                 bool rejected = false;
                 try { game.Komi = invalid; } catch (ArgumentException) { rejected = true; }
@@ -185,14 +186,40 @@ namespace GoDesk
                 try { game.NewGame(9, invalid, 0); } catch (ArgumentException) { resetRejected = true; }
                 Check(resetRejected && game.Size == 19 && game.Komi == 7.5, "重开对局拒绝无效贴目且保留原棋局");
             }
-            RejectSgf("(;SZ[9]KM[400.5])", "SGF 拒绝过大贴目");
-            RejectSgf("(;SZ[9]KM[-400.5])", "SGF 拒绝过小贴目");
+            RejectSgf("(;SZ[9]KM[150.5])", "SGF 拒绝过大贴目");
+            RejectSgf("(;SZ[9]KM[-150.5])", "SGF 拒绝过小贴目");
             RejectSgf("(;SZ[9]KM[NaN])", "SGF 拒绝 NaN 贴目");
             RejectSgf("(;SZ[9]KM[6.25])", "SGF 拒绝非半整数贴目");
             RejectSgf("(;SZ[9]KM[6.2])", "SGF 拒绝十分目贴目");
             bool newGameRejected = false;
             try { game.NewGame(9, 401, 0); } catch (ArgumentException) { newGameRejected = true; }
             Check(newGameRejected && game.Size == 19 && game.Komi == 7.5, "非法贴目新局不破坏原棋局");
+        }
+
+        private static void TestFoxSgfKomi()
+        {
+            double[,] cases = { { 375, 7.5 }, { 750, 7.5 }, { 325, 6.5 }, { 650, 6.5 },
+                { 350, 7 }, { 700, 7 }, { 550, 5.5 } };
+            for (int i = 0; i < cases.GetLength(0); i++)
+            {
+                string encoded = cases[i, 0].ToString(System.Globalization.CultureInfo.InvariantCulture);
+                GoGame fox = GoGame.FromSgf("(;SZ[19]AP[GNU Go:3.8]KM[" + encoded + "]AP[foxwq]RU[Chinese];B[pd];W[cp])");
+                Check(fox.Komi == cases[i, 1] && fox.Position == 2, "野狐私有贴目转换，重复 AP：" + encoded);
+                Check(!String.IsNullOrEmpty(fox.ImportNotice) && fox.ImportNotice.Contains(encoded), "野狐贴目转换明确提示");
+                GoGame roundtrip = GoGame.FromSgf(fox.ToSgf());
+                Check(roundtrip.Komi == cases[i, 1] && roundtrip.Position == 2 && String.IsNullOrEmpty(roundtrip.ImportNotice),
+                    "野狐棋谱导出为标准贴目，重新导入不重复转换");
+            }
+            GoGame standard = GoGame.FromSgf("(;SZ[19]AP[foxwq]KM[7.5])");
+            Check(standard.Komi == 7.5 && String.IsNullOrEmpty(standard.ImportNotice), "野狐标准贴目保持不变");
+            Check(GoGame.FromSgf("(;SZ[19]AP[FOXWQ:1.0]KM[375])").Komi == 7.5, "野狐来源带版本号");
+            Check(GoGame.FromSgf("(;SZ[19]AP[other]KM[100])").Komi == 100, "其他软件的合法自定义贴目保持不变");
+            RejectSgf("(;SZ[19]KM[375])", "无野狐来源时不猜测私有单位");
+            RejectSgf("(;SZ[19]AP[notfoxwq]KM[375])", "不误识别相似软件名称");
+            RejectSgf("(;SZ[19]AP[foxwq]KM[777])", "不猜测未知野狐编码");
+            GoGame reset = GoGame.FromSgf("(;SZ[19]AP[foxwq]KM[375])");
+            reset.NewGame(19, 7.5, 0);
+            Check(String.IsNullOrEmpty(reset.ImportNotice), "新局清除旧棋谱导入提示");
         }
 
         private static void TestHandicap()

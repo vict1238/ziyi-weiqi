@@ -30,13 +30,22 @@ namespace GoDesk
             typeof(BoardControl).GetMethod("OnMouseClick", PrivateInstance).Invoke(board, new object[] { click });
             await WaitIdle(form);
             Check(form.CurrentGame.Position == 2, "Physical board hit-test + auto AI reply did not produce two moves");
-            Check(form.CurrentGame.Board[3, 15] == Stone.Black, "Hit-test coordinate did not map to D4");
+            Check(form.CurrentGame.Board[3, 15] == Stone.Black, "Hit-test coordinate did not map to display D16");
             Check(form.CurrentGame.Moves[1].Color == Stone.White, "Automatic AI color is incorrect");
-            report.AppendLine("Board hit-test -> human D4 -> actual KataGo reply: PASS");
+            Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains(form.CurrentGame.Moves[1].ToDisplay(19)), "AI move status does not use screen coordinates");
+            Call(form, "Navigate", 1);
+            Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains("D16"), "History status uses protocol coordinates");
+            Call(form, "Navigate", 2);
+            report.AppendLine("Board hit-test -> human display D16 -> actual KataGo reply; AI/history screen coordinates: PASS");
+            CheckEngineSettingsDialog(form, outputFolder);
+            report.AppendLine("Engine/model settings cancel + validation + profile swap keep game and user preferences: PASS");
+            CheckStoneVolumeSettings(form, outputFolder);
+            report.AppendLine("Stone volume dialog draft/cancel/confirm; checks stay muted and do not save preferences: PASS");
 
             Button hints = (Button)form.Controls.Find("BestHints", true)[0];
             hints.PerformClick(); await WaitIdle(form);
             Check(board.ShowHints && board.Analysis != null && board.Analysis.Candidates.Count > 0, "Hints control has no real analysis");
+            Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains(BoardCoordinates.FromGtp(board.Analysis.BestMove, form.CurrentGame.Size)), "Hint status uses protocol coordinates");
             report.AppendLine("Best hints control + real candidates: PASS");
             Button score = (Button)form.Controls.Find("Score", true)[0];
             score.PerformClick(); await WaitIdle(form);
@@ -151,6 +160,119 @@ namespace GoDesk
                 Check(applied, "Custom depth dialog was not confirmed");
             }
             finally { timer.Dispose(); }
+        }
+
+        private static void CheckStoneVolumeSettings(MainForm form, string outputFolder)
+        {
+            Check(!(bool)Field(form, "persistEnginePreferences"), "Audio checks require isolated preferences");
+            StoneSound player = (StoneSound)Field(form, "stoneSound");
+            Check(player.Volume == 0, "UI checks must start muted");
+            string before = form.CurrentGame.ToSgf();
+            var timer = new System.Windows.Forms.Timer { Interval = 100 };
+            timer.Tick += delegate
+            {
+                Form dialog = null;
+                foreach (Form candidate in Application.OpenForms) if (candidate.Name == "GameSettings") dialog = candidate;
+                if (dialog == null) return;
+                timer.Stop();
+                ((TrackBar)dialog.Controls.Find("StoneVolume", true)[0]).Value = 73;
+                Check(player.Volume == 0, "Draft slider modified active volume before confirmation");
+                ((Button)dialog.Controls.Find("GameSettingsCancel", true)[0]).PerformClick();
+            };
+            try { timer.Start(); Call(form, "GameSettings"); }
+            finally { timer.Dispose(); }
+            Check(player.Volume == 0, "Cancel changed active sound volume");
+            var confirm = new System.Windows.Forms.Timer { Interval = 100 };
+            confirm.Tick += delegate
+            {
+                Form dialog = null;
+                foreach (Form candidate in Application.OpenForms) if (candidate.Name == "GameSettings") dialog = candidate;
+                if (dialog == null) return;
+                confirm.Stop();
+                ((TrackBar)dialog.Controls.Find("StoneVolume", true)[0]).Value = 37;
+                Check(((Label)dialog.Controls.Find("StoneVolumePercent", true)[0]).Text == "37%", "Volume percentage did not update");
+                Check(dialog.Controls.Find("StoneSoundPreview", true).Length == 1, "Sound preview control missing");
+                using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
+                {
+                    dialog.DrawToBitmap(bitmap, new Rectangle(Point.Empty, dialog.Size));
+                    bitmap.Save(Path.Combine(outputFolder, "desktop-sound-settings.png"), System.Drawing.Imaging.ImageFormat.Png);
+                }
+                ((Button)dialog.Controls.Find("GameSettingsOk", true)[0]).PerformClick();
+            };
+            try { confirm.Start(); Call(form, "GameSettings"); }
+            finally { confirm.Dispose(); }
+            Check(player.Volume == 37 && form.CurrentGame.ToSgf() == before, "Volume confirmation failed or changed the game");
+            player.Volume = 0;
+        }
+
+        private static void CheckEngineSettingsDialog(MainForm form, string outputFolder)
+        {
+            Check(!(bool)Field(form, "persistEnginePreferences"), "Run UI checks with MainForm(EngineSettings.CreateCpu(), false) to isolate preferences");
+            string settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GoDesk", "engine-settings.json");
+            string savedBefore = File.Exists(settingsPath) ? File.ReadAllText(settingsPath) : null;
+            EngineSettings before = form.CurrentEngineSettings;
+            object oldEngine = Field(form, "engine");
+            string gameBefore = form.CurrentGame.ToSgf();
+            int oldSession = (int)Field(form, "engineSession");
+            var cancelTimer = new System.Windows.Forms.Timer { Interval = 100 };
+            cancelTimer.Tick += delegate
+            {
+                Form dialog = null;
+                foreach (Form candidate in Application.OpenForms) if (candidate.Name == "EngineModelSettings") dialog = candidate;
+                if (dialog == null) return;
+                cancelTimer.Stop();
+                ((ComboBox)dialog.Controls.Find("EngineBackend", true)[0]).SelectedIndex = 1;
+                TextBox shownEngine = (TextBox)dialog.Controls.Find("EnginePath", true)[0];
+                TextBox shownModel = (TextBox)dialog.Controls.Find("ModelPath", true)[0];
+                string originalEngine = shownEngine.Text, originalModel = shownModel.Text;
+                shownEngine.Text = @"gpu\katago.exe";
+                shownModel.Text = @"gpu\model.bin.gz";
+                using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
+                {
+                    dialog.DrawToBitmap(bitmap, new Rectangle(Point.Empty, dialog.Size));
+                    bitmap.Save(Path.Combine(outputFolder, "desktop-engine-settings.png"), System.Drawing.Imaging.ImageFormat.Png);
+                }
+                shownEngine.Text = originalEngine;
+                shownModel.Text = originalModel;
+                ((ComboBox)dialog.Controls.Find("EngineBackend", true)[0]).SelectedIndex = 2;
+                ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text = @"Z:\missing\katago.exe";
+                ((TextBox)dialog.Controls.Find("ModelPath", true)[0]).Text = @"Z:\missing\model.bin.gz";
+                ((Button)dialog.Controls.Find("EngineSettingsCancel", true)[0]).PerformClick();
+            };
+            try { cancelTimer.Start(); Check(!(bool)Call(form, "ShowEngineSettings", form), "Cancel confirmed engine settings"); }
+            finally { cancelTimer.Dispose(); }
+            EngineSettings afterCancel = form.CurrentEngineSettings;
+            Check(before.Backend == afterCancel.Backend && before.EnginePath == afterCancel.EnginePath && before.ModelPath == afterCancel.ModelPath && Object.ReferenceEquals(oldEngine, Field(form, "engine")), "Canceled engine settings changed the active profile");
+            Check(form.CurrentGame.ToSgf() == gameBefore, "Canceled engine settings changed the game");
+
+            var confirmTimer = new System.Windows.Forms.Timer { Interval = 100 };
+            confirmTimer.Tick += delegate
+            {
+                Form dialog = null;
+                foreach (Form candidate in Application.OpenForms) if (candidate.Name == "EngineModelSettings") dialog = candidate;
+                if (dialog == null) return;
+                confirmTimer.Stop();
+                ComboBox backend = (ComboBox)dialog.Controls.Find("EngineBackend", true)[0];
+                backend.SelectedIndex = 2;
+                ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text = @"Z:\missing\katago.exe";
+                ((TextBox)dialog.Controls.Find("ModelPath", true)[0]).Text = @"Z:\missing\model.bin.gz";
+                ((Button)dialog.Controls.Find("EngineSettingsOK", true)[0]).PerformClick();
+                Check(!String.IsNullOrEmpty(((Label)dialog.Controls.Find("EngineSettingsError", true)[0]).Text), "Missing custom engine files were accepted");
+                backend.SelectedIndex = 0;
+                ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text = "";
+                ((TextBox)dialog.Controls.Find("ModelPath", true)[0]).Text = "";
+                ((Button)dialog.Controls.Find("EngineSettingsOK", true)[0]).PerformClick();
+            };
+            try { confirmTimer.Start(); Check((bool)Call(form, "ShowEngineSettings", form), "Valid CPU settings were not applied"); }
+            finally { confirmTimer.Dispose(); }
+            Check(form.CurrentEngineSettings.Backend == "cpu" && !Object.ReferenceEquals(oldEngine, Field(form, "engine")), "Confirmed settings did not replace the engine");
+            Check(form.CurrentGame.ToSgf() == gameBefore && ((BoardControl)form.Controls.Find("GoBoard", true)[0]).Analysis == null, "Profile swap reset the game or kept stale analysis");
+            Label engineStatus = (Label)Field(form, "engineLabel");
+            string currentStatus = engineStatus.Text;
+            Call(form, "OnEngineStatus", oldSession, "stale engine status");
+            Check(engineStatus.Text == currentStatus, "A previous engine session overwrote current status");
+            string savedAfter = File.Exists(settingsPath) ? File.ReadAllText(settingsPath) : null;
+            Check(savedBefore == savedAfter, "Desktop checks persisted engine preferences");
         }
 
         private static void CheckCancelledCustomDepth(MainForm form, ComboBox level)

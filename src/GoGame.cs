@@ -55,13 +55,14 @@ namespace GoDesk
         private string rules;
 
         public int Size { get { return size; } }
+        public string ImportNotice { get; private set; }
         public double Komi
         {
             get { return komi; }
             set
             {
                 if (!IsValidKomi(value))
-                    throw new ArgumentException("贴目必须在 -400 到 400 之间，且为整数或半整数（如 6、6.5）。");
+                    throw new ArgumentException("贴目必须在 -150 到 150 之间，且为整数或半整数（如 6、6.5）。");
                 komi = value;
             }
         }
@@ -98,13 +99,14 @@ namespace GoDesk
                 throw new ArgumentException("让子数必须在 0 到 9 之间，让子棋盘至少为 7 路。");
             // Validate before resetting a game, so a failed request preserves it.
             if (!IsValidKomi(newKomi))
-                throw new ArgumentException("贴目必须在 -400 到 400 之间，且为整数或半整数（如 6、6.5）。");
+                throw new ArgumentException("贴目必须在 -150 到 150 之间，且为整数或半整数（如 6、6.5）。");
             size = boardSize;
             Komi = newKomi;
             Rules = "chinese-ogs";
             moves.Clear();
             initialStones.Clear();
             metadata.Clear();
+            ImportNotice = null;
             initialPlayer = handicap > 0 ? Stone.White : Stone.Black;
             if (handicap == 1)
             {
@@ -306,7 +308,7 @@ namespace GoDesk
         public string ToSgf()
         {
             StringBuilder b = new StringBuilder();
-            b.Append("(;GM[1]FF[4]CA[UTF-8]AP[梓懿围棋:1.1]RU[")
+            b.Append("(;GM[1]FF[4]CA[UTF-8]AP[梓懿围棋:1.2]RU[")
                 .Append(rules == "japanese" ? "Japanese" : "Chinese").Append("]SZ[").Append(size)
                 .Append("]KM[").Append(komi.ToString("0.################", CultureInfo.InvariantCulture)).Append(']');
             int blacks = 0, whites = 0;
@@ -359,9 +361,18 @@ namespace GoDesk
                 throw new FormatException("只支持边长为 2 到 25 的正方形棋盘。");
             double komi = 7.5;
             string komiText = First(root, "KM");
-            if (komiText != null && (!Double.TryParse(komiText, NumberStyles.Float, CultureInfo.InvariantCulture, out komi) || !IsValidKomi(komi)))
-                throw new FormatException("SGF 中的贴目 KM 必须在 -400 到 400 之间，且为整数或半整数（如 6、6.5）。");
+            if (komiText != null && !Double.TryParse(komiText, NumberStyles.Float, CultureInfo.InvariantCulture, out komi))
+                throw new FormatException("SGF 中的贴目 KM 不是有效数字。");
+            double exportedKomi = komi;
+            // Match KataGo's Fox SGF compatibility mapping before checking native
+            // analysis bounds. Fox exports can repeat AP after another application.
+            if (IsFoxExport(root)) komi = NormalizeFoxKomi(komi);
+            if (!IsValidKomi(komi))
+                throw new FormatException("SGF 中的贴目 KM 必须在 -150 到 150 之间，且为整数或半整数（如 6、6.5）。");
             GoGame game = new GoGame(size, komi);
+            if (komi != exportedKomi)
+                game.ImportNotice = "已识别野狐棋谱：贴目从 KM[" + komiText + "] 转为 " +
+                    komi.ToString("0.#", CultureInfo.InvariantCulture) + " 目。";
             string rulesText = First(root, "RU");
             if (rulesText != null)
             {
@@ -436,6 +447,25 @@ namespace GoDesk
             return node.Properties.TryGetValue(property, out values) && values.Count > 0 ? values[0] : null;
         }
 
+        private static bool IsFoxExport(SgfNode root)
+        {
+            List<string> applications;
+            if (!root.Properties.TryGetValue("AP", out applications)) return false;
+            foreach (string application in applications)
+                if (String.Equals(application.Split(':')[0].Trim(), "foxwq", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        private static double NormalizeFoxKomi(double value)
+        {
+            // Upstream cpp/dataio/sgf.cpp, KataGo v1.14.1, getKomiOrDefault.
+            if (value == 550) return 5.5;
+            if (value == 325 || value == 650) return 6.5;
+            if (value == 375 || value == 750) return 7.5;
+            if (value == 350 || value == 700) return 7;
+            return value;
+        }
+
         private static string NormalizeRules(string value)
         {
             string normalized = value == null ? "" : value.Trim().ToLowerInvariant();
@@ -448,7 +478,7 @@ namespace GoDesk
 
         private static bool IsValidKomi(double value)
         {
-            return !Double.IsNaN(value) && !Double.IsInfinity(value) && Math.Abs(value) <= 400 &&
+            return !Double.IsNaN(value) && !Double.IsInfinity(value) && Math.Abs(value) <= 150 &&
                 value * 2 == Math.Round(value * 2);
         }
 

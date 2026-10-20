@@ -1,7 +1,9 @@
 ﻿PASS
 Product title and About tribute: PASS
 Unconfirmed custom selection keeps the committed depth; Cancel restores preset: PASS
-Board hit-test -> human D4 -> actual KataGo reply: PASS
+Board hit-test -> human display D16 -> actual KataGo reply; AI/history screen coordinates: PASS
+Engine/model settings cancel + validation + profile swap keep game and user preferences: PASS
+Stone volume dialog draft/cancel/confirm; checks stay muted and do not save preferences: PASS
 Best hints control + real candidates: PASS
 Score control + 361 ownership values: PASS
 Undo a human / AI pair: PASS

@@ -38,8 +38,10 @@ namespace GoDesk
     public sealed class KataGoEngine : IDisposable
     {
         private const string ModelFile = "g170e-b10c128-s1141046784-d204142634.bin.gz";
-        // KataGo 1.14.1's own JSON protocol limit; zero means think until Stop().
+        // KataGo's native JSON analysis limit; zero means think until Stop().
         private const long NativeContinuousVisits = 1L << 50;
+        private readonly EngineSettings settings;
+        private readonly string engineName;
         private readonly object sync = new object();
         private readonly SemaphoreSlim startGate = new SemaphoreSlim(1, 1);
         private readonly Dictionary<string, PendingRequest> pending = new Dictionary<string, PendingRequest>();
@@ -47,11 +49,25 @@ namespace GoDesk
         private Process process;
         private TaskCompletionSource<bool> readySignal;
         private string readyId;
-        private string status = "KataGo CPU 引擎尚未启动";
+        private string status;
+        private CancellationTokenSource startupCancellation;
         private bool ready;
         private bool disposed;
         private int generation;
         private int stopGeneration;
+
+        public KataGoEngine() : this(EngineSettings.CreateCpu()) { }
+
+        public KataGoEngine(EngineSettings settings)
+        {
+            if (settings == null) throw new ArgumentNullException("settings");
+            this.settings = settings.Clone();
+            string backend = this.settings.NormalizedBackend;
+            engineName = backend == "cpu" ? "KataGo CPU" : backend == "gpu" ? "KataGo GPU" : "自定义 KataGo";
+            status = engineName + " 引擎尚未启动";
+            // Path existence is deliberately deferred to startup, allowing the UI
+            // to repair a saved profile after moving/removing an external model.
+        }
 
         private sealed class PendingRequest
         {
@@ -92,7 +108,7 @@ namespace GoDesk
             }
             if (size < 2 || size > 19) throw new ArgumentOutOfRangeException("game", "KataGo 支持 2 至 19 路棋盘。");
 
-            await EnsureStartedAsync().ConfigureAwait(false);
+            await EnsureStartedAsync(requestGeneration).ConfigureAwait(false);
             string id = "analysis-" + Guid.NewGuid().ToString("N");
             var query = new Dictionary<string, object>
             {
@@ -119,8 +135,8 @@ namespace GoDesk
                     if (requestStopGeneration != stopGeneration) TryTerminateLocked(id);
                 }
                 if (!request.Completion.Task.IsCompleted)
-                    SetStatus(maxVisits == 0 ? "KataGo 持续思考中，可随时停止" :
-                        "KataGo 正在思考（目标 " + maxVisits.ToString(CultureInfo.InvariantCulture) + " 次搜索）");
+                    SetStatus(maxVisits == 0 ? engineName + " 持续思考中，可随时停止" :
+                        engineName + " 正在思考（目标 " + maxVisits.ToString(CultureInfo.InvariantCulture) + " 次搜索）");
                 return await request.Completion.Task.ConfigureAwait(false);
             }
             catch
@@ -130,30 +146,39 @@ namespace GoDesk
             }
         }
 
-        private async Task EnsureStartedAsync()
+        private async Task EnsureStartedAsync(int requestGeneration)
         {
             await startGate.WaitAsync().ConfigureAwait(false);
             Process attempted = null;
+            CancellationTokenSource cancellation = null;
             try
             {
                 Process previous;
                 lock (sync)
                 {
                     ThrowIfDisposed();
+                    if (requestGeneration != generation) throw new TaskCanceledException("分析已取消。");
                     if (ready && process != null && !process.HasExited) return;
+                    cancellation = new CancellationTokenSource();
+                    startupCancellation = cancellation;
                     previous = process;
                     process = null;
                     ready = false;
                 }
                 if (previous != null) { StopProcess(previous); previous.Dispose(); }
-                SetStatus("正在准备 KataGo CPU 引擎…");
-                string directory = await Task.Run(() => ExtractEmbeddedEngine()).ConfigureAwait(false);
+                SetStatus("正在准备 " + engineName + " 引擎…");
+                Task<EngineLaunchPaths> preparation = Task.Run(() => PrepareEngineFiles());
+                // Hashing/extracting a model (or waiting for another instance's
+                // extraction mutex) must not hold up a canceled UI operation.
+                ObserveBackgroundFailure(preparation);
+                await Task.WhenAny(preparation, Task.Delay(Timeout.Infinite, cancellation.Token)).ConfigureAwait(false);
+                cancellation.Token.ThrowIfCancellationRequested();
+                EngineLaunchPaths paths = await preparation.ConfigureAwait(false);
                 var info = new ProcessStartInfo
                 {
-                    FileName = Path.Combine(directory, "katago.exe"),
-                    Arguments = "analysis -config \"" + Path.Combine(directory, "analysis.cfg") +
-                        "\" -model \"" + Path.Combine(directory, ModelFile) + "\" -quit-without-waiting",
-                    WorkingDirectory = directory,
+                    FileName = paths.Executable,
+                    Arguments = "analysis -config " + QuotePath(paths.Config) + " -model " + QuotePath(paths.Model) + " -quit-without-waiting",
+                    WorkingDirectory = paths.WorkingDirectory,
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     WindowStyle = ProcessWindowStyle.Hidden,
@@ -178,6 +203,7 @@ namespace GoDesk
                 lock (sync)
                 {
                     ThrowIfDisposed();
+                    cancellation.Token.ThrowIfCancellationRequested();
                     recentErrors.Clear();
                     process = launched;
                     readySignal = startup;
@@ -197,12 +223,18 @@ namespace GoDesk
                         throw;
                     }
                 }
-                SetStatus("正在加载围棋模型…");
-                Task completed = await Task.WhenAny(startup.Task, Task.Delay(90000)).ConfigureAwait(false);
+                string selectedBackend = settings.NormalizedBackend;
+                bool cpu = selectedBackend == "cpu";
+                SetStatus(cpu ? "正在加载 CPU 围棋模型…" : selectedBackend == "gpu" ?
+                    "正在加载 GPU 模型；首次 OpenCL 调优可能需要数分钟，可取消…" : "正在加载自定义引擎与模型；可取消…");
+                int timeoutMilliseconds = cpu ? 90000 : 300000;
+                Task completed = await Task.WhenAny(startup.Task, Task.Delay(timeoutMilliseconds, cancellation.Token)).ConfigureAwait(false);
+                cancellation.Token.ThrowIfCancellationRequested();
                 if (completed != startup.Task)
                 {
                     StopProcess(launched);
-                    throw new TimeoutException("KataGo 模型加载超过 90 秒，请重试。");
+                    throw new TimeoutException(cpu ? "CPU 模型加载超过 90 秒，请检查模型后重试。" :
+                        engineName + " 加载或调优超过 5 分钟，请检查驱动、引擎与模型。可在设置中主动切换 CPU。");
                 }
                 await startup.Task.ConfigureAwait(false);
                 lock (sync)
@@ -212,7 +244,7 @@ namespace GoDesk
                         throw new InvalidOperationException("KataGo 在加载过程中退出。");
                     ready = true;
                 }
-                SetStatus("KataGo CPU 引擎就绪");
+                SetStatus(engineName + " 引擎就绪");
             }
             catch (Exception ex)
             {
@@ -222,10 +254,15 @@ namespace GoDesk
                     StopProcess(attempted);
                     attempted.Dispose();
                 }
-                SetStatus("AI 引擎启动失败：" + ex.Message);
+                SetStatus(ex is OperationCanceledException ? engineName + " 启动已取消" : engineName + " 启动失败：" + ex.Message);
                 throw;
             }
-            finally { startGate.Release(); }
+            finally
+            {
+                lock (sync) { if (startupCancellation == cancellation) startupCancellation = null; }
+                if (cancellation != null) { cancellation.Cancel(); cancellation.Dispose(); }
+                startGate.Release();
+            }
         }
 
         private void OnOutput(Process source, string line)
@@ -295,7 +332,7 @@ namespace GoDesk
                     }
                 }
                 else request.Completion.TrySetException(failure);
-                if (nowIdle) SetStatus(failure == null ? "KataGo CPU 引擎就绪" : failure.Message);
+                if (nowIdle) SetStatus(failure == null ? engineName + " 引擎就绪" : failure.Message);
             }
             catch (Exception ex)
             {
@@ -370,11 +407,11 @@ namespace GoDesk
                 ready = false;
                 process = null;
                 detail = recentErrors.Count == 0 ? "进程已退出" : recentErrors.Last();
-                var error = new InvalidOperationException("KataGo 已退出：" + detail);
+                var error = new InvalidOperationException(engineName + " 已退出：" + detail);
                 FailAllLocked(error);
                 if (readySignal != null) readySignal.TrySetException(error);
             }
-            SetStatus("KataGo 已退出，下次分析将重新启动：" + detail);
+            SetStatus(engineName + " 已退出，下次分析将重新启动：" + detail);
             source.Dispose();
         }
 
@@ -383,14 +420,20 @@ namespace GoDesk
         public void Stop()
         {
             bool stopping;
+            bool loading;
             lock (sync)
             {
                 if (disposed) return;
                 stopGeneration++;
                 stopping = pending.Count > 0;
+                loading = !ready && startupCancellation != null;
+                // Before a model is ready there is no best-so-far result to keep.
+                // A stop during lengthy OpenCL tuning cancels that startup promptly.
+                if (loading) startupCancellation.Cancel();
                 foreach (string id in pending.Keys) TryTerminateLocked(id);
             }
-            if (stopping) SetStatus("正在停止思考并整理结果…");
+            if (loading) SetStatus(engineName + " 加载已取消");
+            else if (stopping) SetStatus("正在停止思考并整理结果…");
         }
 
         public void Cancel()
@@ -399,6 +442,7 @@ namespace GoDesk
             {
                 if (disposed) return;
                 generation++;
+                if (startupCancellation != null) startupCancellation.Cancel();
                 foreach (var pair in pending)
                 {
                     TryTerminateLocked(pair.Key);
@@ -406,7 +450,7 @@ namespace GoDesk
                 }
                 pending.Clear();
             }
-            SetStatus(IsReady ? "KataGo CPU 引擎就绪" : "AI 分析已取消");
+            SetStatus(IsReady ? engineName + " 引擎就绪" : engineName + " 分析已取消");
         }
 
         private void TryTerminateLocked(string id)
@@ -454,6 +498,94 @@ namespace GoDesk
         private static long Integer(Dictionary<string, object> item, string name)
         { object value; return item.TryGetValue(name, out value) ? Convert.ToInt64(value, CultureInfo.InvariantCulture) : 0; }
         private static JavaScriptSerializer Serializer() { return new JavaScriptSerializer { MaxJsonLength = 8 * 1024 * 1024, RecursionLimit = 100 }; }
+
+        private static void ObserveBackgroundFailure(Task task)
+        {
+            task.ContinueWith(failed => { var observed = failed.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
+        private sealed class EngineLaunchPaths
+        {
+            public string Executable;
+            public string Model;
+            public string Config;
+            public string WorkingDirectory;
+        }
+
+        private EngineLaunchPaths PrepareEngineFiles()
+        {
+            if (!Environment.Is64BitOperatingSystem) throw new PlatformNotSupportedException("此版本的 KataGo 需要 64 位 Windows。");
+            settings.Validate();
+            string backend = settings.NormalizedBackend;
+            string executable = settings.ResolvedEnginePath;
+            string model = settings.ResolvedModelPath;
+            if (backend == "cpu" && (String.IsNullOrEmpty(executable) || String.IsNullOrEmpty(model)))
+            {
+                string embedded = ExtractEmbeddedEngine();
+                if (String.IsNullOrEmpty(executable)) executable = Path.Combine(embedded, "katago.exe");
+                if (String.IsNullOrEmpty(model)) model = Path.Combine(embedded, ModelFile);
+            }
+            // Validate() requires concrete GPU/custom paths; no CPU fallback is
+            // performed when a driver, external binary, or external model fails.
+            string working = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "GoDesk", "engine", "work", backend);
+            Directory.CreateDirectory(working);
+            string configuration = BuildAnalysisConfiguration(backend);
+            string fingerprint;
+            using (var hash = SHA256.Create())
+                fingerprint = BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(configuration))).Replace("-", "").Substring(0, 16);
+            string config = Path.Combine(working, "analysis-" + fingerprint + ".cfg");
+            WriteConfiguration(config, configuration);
+            return new EngineLaunchPaths { Executable = executable, Model = model, Config = config, WorkingDirectory = working };
+        }
+
+        internal static string BuildAnalysisConfiguration(string backend)
+        {
+            bool cpu = backend == "cpu";
+            var config = new StringBuilder();
+            config.AppendLine("# Generated by GoDesk for KataGo JSON analysis.");
+            config.AppendLine("logToStderr = true");
+            config.AppendLine("logAllRequests = false");
+            config.AppendLine("logAllResponses = false");
+            config.AppendLine("reportAnalysisWinratesAs = BLACK");
+            config.AppendLine("numAnalysisThreads = 1");
+            config.AppendLine("numSearchThreadsPerAnalysisThread = " + (cpu ? "4" : "16"));
+            if (cpu) config.AppendLine("numEigenThreadsPerModel = 4");
+            config.AppendLine("nnMaxBatchSize = " + (cpu ? "4" : "32"));
+            config.AppendLine("nnCacheSizePowerOfTwo = " + (cpu ? "16" : "18"));
+            config.AppendLine("nnMutexPoolSizePowerOfTwo = " + (cpu ? "12" : "14"));
+            config.AppendLine("maxVisits = 128");
+            config.AppendLine("wideRootNoise = 0.0");
+            config.AppendLine("analysisPVLen = 10");
+            config.AppendLine("rootSymmetryPruning = true");
+            return config.ToString();
+        }
+
+        private static void WriteConfiguration(string path, string configuration)
+        {
+            if (File.Exists(path) && File.ReadAllText(path, Encoding.UTF8) == configuration) return;
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                byte[] bytes = new UTF8Encoding(false).GetBytes(configuration);
+                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+                { stream.Write(bytes, 0, bytes.Length); stream.Flush(true); }
+                if (File.Exists(path)) File.Replace(temporary, path, null);
+                else
+                {
+                    try { File.Move(temporary, path); }
+                    catch (IOException) { if (File.Exists(path)) File.Replace(temporary, path, null); else throw; }
+                }
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
+        private static string QuotePath(string path)
+        {
+            if (String.IsNullOrEmpty(path) || path.IndexOf('"') >= 0) throw new ArgumentException("引擎参数路径无效。");
+            return "\"" + path + "\"";
+        }
 
         private static string ExtractEmbeddedEngine()
         {
@@ -527,6 +659,7 @@ namespace GoDesk
                 disposed = true;
                 ready = false;
                 generation++;
+                if (startupCancellation != null) startupCancellation.Cancel();
                 foreach (PendingRequest request in pending.Values) request.Completion.TrySetCanceled();
                 pending.Clear();
                 if (readySignal != null) readySignal.TrySetCanceled();

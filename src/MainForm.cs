@@ -17,13 +17,18 @@ namespace GoDesk
         private readonly ToolTip tooltips = new ToolTip();
         private GoGame game;
         private KataGoEngine engine;
+        private readonly StoneSound stoneSound;
+        private EngineSettings engineSettings;
+        private readonly bool persistEnginePreferences;
+        private Action<string> engineStatusHandler;
+        private int engineSession;
         private AnalysisResult analysis;
         private BoardControl board;
         private ComboBox humanBox, sizeBox, difficultyBox;
         private CheckBox automaticBox;
         private Button aiButton, hintButton, scoreButton, passButton, undoButton, cancelButton, selfPlayButton;
         private Button firstButton, prevButton, nextButton, lastButton;
-        private Label turnLabel, moveLabel, captureLabel, engineLabel, evaluationLabel, detailLabel, gameInfoLabel;
+        private Label turnLabel, moveLabel, captureLabel, engineLabel, profileLabel, evaluationLabel, detailLabel, gameInfoLabel;
         private ToolStripStatusLabel statusLabel;
         private Panel evaluationBar;
         private bool thinking, closing, updating;
@@ -36,9 +41,21 @@ namespace GoDesk
         private double komi = 7.5;
         private string rules = "chinese-ogs";
         public GoGame CurrentGame { get { return game; } }
+        public EngineSettings CurrentEngineSettings { get { return engineSettings.Clone(); } }
 
-        public MainForm()
+        public MainForm() : this(null, true) { }
+
+        internal MainForm(EngineSettings startupSettings, bool savePreferences)
         {
+            persistEnginePreferences = savePreferences;
+            stoneSound = new StoneSound(savePreferences ? AudioSettings.LoadVolume() : 0);
+            string settingsError = null;
+            try { engineSettings = startupSettings == null ? EngineSettings.Load() : startupSettings.Clone(); }
+            catch (Exception ex)
+            {
+                engineSettings = EngineSettings.GpuAvailable ? EngineSettings.CreateGpu() : EngineSettings.CreateCpu();
+                settingsError = "引擎设置读取失败，请打开引擎 / 模型设置后确认：" + ex.Message;
+            }
             Text = "梓懿围棋 · KataGo";
             try { Icon = Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location); } catch { }
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -52,10 +69,10 @@ namespace GoDesk
             KeyPreview = true;
             game = new GoGame(19, komi);
             BuildUi();
-            engine = new KataGoEngine();
-            engine.StatusChanged += OnEngineStatus;
+            if (settingsError == null) InstallEngine(engineSettings);
+            else { UpdateEngineDescription(); engineLabel.Text = "引擎设置需要确认"; SetStatus(settingsError); }
             UpdateUi();
-            FormClosing += delegate { closing = true; generation++; engine.Cancel(); engine.Dispose(); };
+            FormClosing += delegate { closing = true; generation++; engineSession++; if (engine != null) { engine.Cancel(); engine.Dispose(); } stoneSound.Dispose(); };
             KeyDown += OnShortcut;
         }
 
@@ -70,8 +87,9 @@ namespace GoDesk
             file.DropDownItems.Add("退出", null, delegate { Close(); });
             ToolStripMenuItem help = new ToolStripMenuItem("帮助(&H)");
             help.DropDownItems.Add("使用说明", null, delegate { ShowHelp(); });
+            help.DropDownItems.Add("引擎 / 模型设置…", null, delegate { ShowEngineSettings(this); });
             help.DropDownItems.Add("第三方许可", null, delegate { Program.ShowLicenses(this); });
-            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.1\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\nAI 使用本机 KataGo 引擎，支持 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
+            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.2\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\n内置 CPU 模型为 g170 b10（2020）；GPU 和自定义使用设置中的模型文件。\r\n搜索次数表示计算量，例如 256 次访问；不是向后推演 256 手，也不对应人类段位。\r\n支持 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
             menu.Items.Add(file); menu.Items.Add(help); MainMenuStrip = menu;
 
             Panel header = new Panel { Dock = DockStyle.Top, Height = 66, Padding = new Padding(26, 9, 24, 8), BackColor = Color.FromArgb(250, 249, 246) };
@@ -118,6 +136,10 @@ namespace GoDesk
             side.Controls.Add(SectionTitle("KataGo"));
             engineLabel = new Label { Width = 264, Height = 43, Text = "○  引擎待命\r\n首次分析时加载模型", ForeColor = muted, AutoEllipsis = true, Margin = new Padding(0, 0, 0, 5) };
             side.Controls.Add(engineLabel);
+            Panel profileRow = new Panel { Width = 264, Height = 36, Margin = new Padding(0, 0, 0, 3) };
+            profileLabel = new Label { Name = "EngineProfile", Location = new Point(0, 0), Width = 195, Height = 30, TextAlign = ContentAlignment.MiddleLeft, ForeColor = muted, AutoEllipsis = true, Font = new Font("Microsoft YaHei UI", 8) };
+            Button engineSettingsButton = MakeButton("设置…", 63, delegate { ShowEngineSettings(this); }); engineSettingsButton.Name = "EngineSettings"; engineSettingsButton.Location = new Point(201, 0); engineSettingsButton.Height = 30;
+            profileRow.Controls.Add(profileLabel); profileRow.Controls.Add(engineSettingsButton); side.Controls.Add(profileRow);
             difficultyBox = Combo(new string[] { "快速 · 16 次搜索", "标准 · 64 次搜索", "深入 · 256 次搜索", "自定义…" }); difficultyBox.SelectedIndex = 1; difficultyBox.Name = "SearchLevel";
             difficultyBox.DropDownWidth = 340;
             difficultyBox.SelectedIndexChanged += delegate { if (!updating && difficultyBox.SelectedIndex != 3) selectedDepthIndex = difficultyBox.SelectedIndex; };
@@ -188,6 +210,92 @@ namespace GoDesk
         private bool HumanTurn { get { return humanBox.SelectedIndex == 2 || game.ToPlay == HumanColor; } }
         private long Visits { get { return selectedDepthIndex == 3 ? (continuousDepth ? 0 : customVisits) : selectedDepthIndex == 0 ? 16 : selectedDepthIndex == 2 ? 256 : 64; } }
 
+        private void InstallEngine(EngineSettings profile)
+        {
+            KataGoEngine replacement = new KataGoEngine(profile);
+            CancelAnalysis();
+            int session = ++engineSession;
+            if (engine != null)
+            {
+                if (engineStatusHandler != null) engine.StatusChanged -= engineStatusHandler;
+                engine.Dispose();
+            }
+            engine = replacement;
+            engineSettings = profile.Clone();
+            engineStatusHandler = delegate(string text) { OnEngineStatus(session, text); };
+            engine.StatusChanged += engineStatusHandler;
+            UpdateEngineDescription();
+            OnEngineStatus(session, engine.Status);
+        }
+
+        private void ApplyEngineSettings(EngineSettings profile)
+        {
+            profile.Validate();
+            if (persistEnginePreferences) profile.Save();
+            InstallEngine(profile);
+            ClearAnalysis(); UpdateUi();
+            SetStatus("引擎 / 模型已设置：" + engineSettings.Description + "。下次分析时加载，当前棋局已保留。");
+        }
+
+        private void UpdateEngineDescription()
+        {
+            profileLabel.Text = engineSettings.Description;
+            tooltips.SetToolTip(profileLabel, engineSettings.Description + "\r\n程序：" + (String.IsNullOrWhiteSpace(engineSettings.EnginePath) ? "内置 CPU KataGo" : engineSettings.EnginePath) + "\r\n模型：" + (String.IsNullOrWhiteSpace(engineSettings.ModelPath) ? "内置 g170 b10（2020）" : engineSettings.ModelPath));
+        }
+
+        private bool ShowEngineSettings(IWin32Window owner)
+        {
+            using (Form dialog = new Form { Name = "EngineModelSettings", Text = "引擎 / 模型设置", ClientSize = new Size(660, 390), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
+            {
+                Label backendLabel = new Label { Text = "计算后端", Location = new Point(22, 23), Size = new Size(100, 27) };
+                ComboBox backend = Combo(new string[] { "CPU · 内置便携引擎", "GPU · OpenCL 套件", "自定义 · 本地 KataGo" }); backend.Name = "EngineBackend"; backend.Location = new Point(128, 19); backend.Width = 510;
+                Label executableLabel = new Label { Text = "KataGo 程序（.exe）", Location = new Point(22, 66), Size = new Size(310, 25) };
+                TextBox executable = new TextBox { Name = "EnginePath", Location = new Point(22, 93), Width = 537 };
+                Label modelLabel = new Label { Text = "神经网络模型（.bin.gz / .bin）", Location = new Point(22, 138), Size = new Size(420, 25) };
+                TextBox model = new TextBox { Name = "ModelPath", Location = new Point(22, 165), Width = 537 };
+                Button browseEngine = MakeButton("浏览…", 72, delegate
+                {
+                    using (OpenFileDialog file = new OpenFileDialog { Title = "选择本地 KataGo 程序", Filter = "KataGo 程序 (*.exe)|*.exe|所有文件 (*.*)|*.*" })
+                        if (file.ShowDialog(dialog) == DialogResult.OK) executable.Text = file.FileName;
+                }); browseEngine.Name = "BrowseEngine"; browseEngine.Location = new Point(566, 90); browseEngine.Height = 30;
+                Button browseModel = MakeButton("浏览…", 72, delegate
+                {
+                    using (OpenFileDialog file = new OpenFileDialog { Title = "选择 KataGo 神经网络模型", Filter = "KataGo 模型 (*.bin.gz;*.bin)|*.bin.gz;*.bin|所有文件 (*.*)|*.*" })
+                        if (file.ShowDialog(dialog) == DialogResult.OK) model.Text = file.FileName;
+                }); browseModel.Name = "BrowseModel"; browseModel.Location = new Point(566, 162); browseModel.Height = 30;
+                Label explanation = new Label { Name = "EngineSettingsExplanation", Location = new Point(22, 213), Size = new Size(616, 58), ForeColor = muted };
+                Label error = new Label { Name = "EngineSettingsError", Location = new Point(22, 276), Size = new Size(616, 57), ForeColor = Color.FromArgb(170, 68, 48) };
+                EngineSettings[] drafts = new EngineSettings[] { EngineSettings.CreateCpu(), EngineSettings.CreateGpu(), new EngineSettings { Backend = "custom", EnginePath = "", ModelPath = "" } };
+                int previous = engineSettings.Backend == "gpu" ? 1 : engineSettings.Backend == "custom" ? 2 : 0;
+                drafts[previous] = engineSettings.Clone();
+                backend.SelectedIndex = previous;
+                Action refresh = delegate
+                {
+                    EngineSettings draft = drafts[backend.SelectedIndex];
+                    executable.Text = draft.EnginePath ?? ""; model.Text = draft.ModelPath ?? "";
+                    explanation.Text = backend.SelectedIndex == 0 ? "CPU 留空时使用内置 KataGo 与 g170 b10 模型（2020）；可另选本地模型。\r\n设置确认后应用，棋局保持不变。" : backend.SelectedIndex == 1 ? "GPU 使用 OpenCL，引擎与模型均从所选文件加载。套件默认使用现代 b18 模型。\r\n请确保显卡驱动可用；加载失败会显示原因，可在这里修正路径。" : "选择本地 KataGo 程序及对应模型文件。\r\n引擎需支持 KataGo analysis JSON 协议；设置确认后应用。";
+                    error.Text = "";
+                };
+                refresh();
+                backend.SelectedIndexChanged += delegate
+                {
+                    drafts[previous].EnginePath = executable.Text; drafts[previous].ModelPath = model.Text;
+                    previous = backend.SelectedIndex; refresh();
+                };
+                Button ok = MakeButton("确定", 88, delegate
+                {
+                    EngineSettings selected = drafts[backend.SelectedIndex].Clone();
+                    selected.EnginePath = executable.Text.Trim(); selected.ModelPath = model.Text.Trim();
+                    try { ApplyEngineSettings(selected); dialog.DialogResult = DialogResult.OK; }
+                    catch (Exception ex) { error.Text = ex.Message; }
+                }); ok.Name = "EngineSettingsOK"; ok.Location = new Point(550, 342);
+                Button cancel = MakeButton("取消", 88, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "EngineSettingsCancel"; cancel.Location = new Point(452, 342);
+                dialog.Controls.AddRange(new Control[] { backendLabel, backend, executableLabel, executable, browseEngine, modelLabel, model, browseModel, explanation, error, ok, cancel });
+                dialog.AcceptButton = ok; dialog.CancelButton = cancel;
+                return dialog.ShowDialog(owner) == DialogResult.OK;
+            }
+        }
+
         private void OnDepthSelected(object sender, EventArgs e)
         {
             if (updating) return;
@@ -240,8 +348,9 @@ namespace GoDesk
             if (!HumanTurn) { SetStatus("当前轮到 AI。点击 AI 落子，或选择双方自由复盘。"); return; }
             string error;
             if (!game.TryPlay(e.X, e.Y, out error)) { SetStatus(error); return; }
+            stoneSound.Play();
             ClearAnalysis(); UpdateUi();
-            SetStatus("已落子 " + game.Moves[game.Position - 1].ToGtp(game.Size) + "。");
+            SetStatus("已落子 " + game.Moves[game.Position - 1].ToDisplay(game.Size) + "。");
             MaybeAutoMove();
         }
         private void PassMove()
@@ -261,7 +370,9 @@ namespace GoDesk
         private void Navigate(int position)
         {
             if (position < 0 || position > game.Moves.Count || position == game.Position) return;
-            CancelAnalysis(); game.Goto(position); ClearAnalysis(); UpdateUi(); SetStatus("复盘第 " + game.Position + " 手。可继续落子建立新变化。");
+            CancelAnalysis(); game.Goto(position); ClearAnalysis(); UpdateUi();
+            string reviewedMove = game.Position > 0 ? " · " + game.Moves[game.Position - 1].ToDisplay(game.Size) : "";
+            SetStatus("复盘第 " + game.Position + " 手" + reviewedMove + "。可继续落子建立新变化。");
         }
         private void NewGame()
         {
@@ -275,7 +386,7 @@ namespace GoDesk
             if (value.Size != 9 && value.Size != 13 && value.Size != 19) throw new ArgumentException("桌面版支持 9 路、13 路和 19 路棋谱。");
             CancelAnalysis(); game = value; komi = game.Komi; rules = game.Rules; handicap = 0;
             updating = true; sizeBox.SelectedIndex = game.Size == 13 ? 1 : game.Size == 9 ? 2 : 0; humanBox.SelectedIndex = 2; updating = false;
-            ClearAnalysis(); board.Game = game; UpdateUi(); SetStatus("棋谱已载入。用方向键复盘，或点击棋盘继续。");
+            ClearAnalysis(); board.Game = game; UpdateUi(); SetStatus((String.IsNullOrEmpty(game.ImportNotice) ? "" : game.ImportNotice + " ") + "棋谱已载入。用方向键复盘，或点击棋盘继续。");
         }
         private async void MaybeAutoMove()
         {
@@ -312,6 +423,7 @@ namespace GoDesk
         private async Task AnalyzeAsync(bool play, bool ownership)
         {
             if (closing || thinking || (play && game.IsOver)) return;
+            if (engine == null) { SetStatus("请打开引擎 / 模型设置，确认可用的引擎与模型后重试。"); return; }
             int stamp = ++generation;
             thinking = true; stopping = false; analysisWillPlay = play; UpdateUi(); SetStatus(ownership ? "KataGo 正在分析形势与领地…" : play ? "KataGo 正在思考下一手…" : "KataGo 正在计算推荐着点…");
             try
@@ -324,10 +436,11 @@ namespace GoDesk
                     string error;
                     Move selected = GoGame.ParseGtp(result.BestMove, game.ToPlay, game.Size);
                     if (!game.TryPlayMove(selected, out error)) throw new InvalidOperationException("引擎返回的着点无法落子：" + error);
+                    if (!selected.IsPass) stoneSound.Play();
                     board.ShowHints = false; board.ShowOwnership = false;
-                    SetStatus("KataGo：" + (selected.IsPass ? "停一手" : selected.ToGtp(game.Size)) + "。" + (game.IsOver ? "双方连续停着，对局结束。" : selfPlaying ? "AI 正在自弈。" : "轮到你了。"));
+                    SetStatus("KataGo：" + selected.ToDisplay(game.Size) + "。" + (game.IsOver ? "双方连续停着，对局结束。" : selfPlaying ? "AI 正在自弈。" : "轮到你了。"));
                 }
-                else SetStatus(ownership ? "已显示领地估计。黑 / 白方块表示归属，结果为 AI 估计。" : "已显示推荐着点 A–E，A 为首选。");
+                else SetStatus(ownership ? "已显示领地估计。黑 / 白方块表示归属，结果为 AI 估计。" : "已显示推荐着点 A–E，A：" + BoardCoordinates.FromGtp(result.BestMove, game.Size) + "。");
             }
             catch (OperationCanceledException) { if (stamp == generation) SetStatus("已停止思考。"); }
             catch (Exception ex)
@@ -352,7 +465,7 @@ namespace GoDesk
             if (stamp != generation || !thinking) return;
             analysis = result; board.Analysis = result; board.ShowHints = !play && !ownership; board.ShowOwnership = ownership;
             UpdateUi();
-            if (!stopping) SetStatus("已搜索 " + result.Visits.ToString("N0", CultureInfo.InvariantCulture) + " 次，当前最佳 " + result.BestMove + "。可结束思考采用当前结果。");
+            if (!stopping) SetStatus("已搜索 " + result.Visits.ToString("N0", CultureInfo.InvariantCulture) + " 次，当前最佳 " + BoardCoordinates.FromGtp(result.BestMove, game.Size) + "。可结束思考采用当前结果。");
         }
         private void StopThinking()
         {
@@ -370,10 +483,11 @@ namespace GoDesk
             analysis = null; board.Analysis = null; board.ShowHints = false; board.ShowOwnership = false;
             hintButton.Text = "推荐着点"; scoreButton.Text = "形势 / 领地";
         }
-        private void OnEngineStatus(string text)
+        private void OnEngineStatus(int session, string text)
         {
-            if (closing || IsDisposed) return;
-            if (InvokeRequired) { try { BeginInvoke(new Action<string>(OnEngineStatus), text); } catch (InvalidOperationException) { } return; }
+            if (closing || IsDisposed || session != engineSession) return;
+            if (InvokeRequired) { try { BeginInvoke(new Action(() => OnEngineStatus(session, text))); } catch (InvalidOperationException) { } return; }
+            if (session != engineSession || engine == null) return;
             engineLabel.Text = (engine.IsReady ? "●  " : "○  ") + text;
             engineLabel.ForeColor = engine.IsReady ? green : muted;
         }
@@ -430,28 +544,37 @@ namespace GoDesk
         }
         private void GameSettings()
         {
-            using (Form dialog = new Form { Text = "设置", Width = 344, Height = 330, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, Font = Font, BackColor = BackColor })
+            using (Form dialog = new Form { Name = "GameSettings", Text = "设置", Width = 360, Height = 430, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, Font = Font, BackColor = BackColor })
             {
                 Label k = new Label { Text = "贴目", Location = new Point(23, 24), Size = new Size(86, 26) };
-                NumericUpDown komiInput = new NumericUpDown { Location = new Point(117, 20), Width = 166, Minimum = -400, Maximum = 400, DecimalPlaces = 1, Increment = .5m, Value = (decimal)komi };
+                NumericUpDown komiInput = new NumericUpDown { Location = new Point(117, 20), Width = 166, Minimum = -150, Maximum = 150, DecimalPlaces = 1, Increment = .5m, Value = (decimal)komi };
                 Label h = new Label { Text = "让子（黑）", Location = new Point(23, 68), Size = new Size(94, 26) };
                 NumericUpDown handicapInput = new NumericUpDown { Location = new Point(117, 64), Width = 166, Minimum = 0, Maximum = 9, Value = handicap };
                 Label ruleLabel = new Label { Text = "规则", Location = new Point(23, 111), Size = new Size(86, 26) };
                 ComboBox ruleInput = Combo(new string[] { "中国规则 · 数子", "日本规则 · 数目" }); ruleInput.Location = new Point(117, 107); ruleInput.Width = 166; ruleInput.SelectedIndex = rules == "japanese" ? 1 : 0;
                 Label depthLabel = new Label { Text = "计算深度", Location = new Point(23, 154), Size = new Size(86, 26) };
                 Button depthButton = MakeButton("设置计算深度…", 166, delegate { ShowDepthSettings(dialog); }); depthButton.Location = new Point(117, 148); depthButton.Height = 30;
-                Label info = new Label { Text = "对局设置应用于下一局。\r\n计算深度设置应用于下一次分析。", Location = new Point(23, 193), Size = new Size(288, 42), ForeColor = muted };
+                Label volumeLabel = new Label { Text = "落子音量", Location = new Point(23, 195), Size = new Size(86, 27) };
+                TrackBar volumeInput = new TrackBar { Name = "StoneVolume", Location = new Point(108, 186), Size = new Size(181, 45), Minimum = 0, Maximum = 100, TickFrequency = 25, SmallChange = 5, LargeChange = 10, Value = stoneSound.Volume };
+                Label volumePercent = new Label { Name = "StoneVolumePercent", Text = volumeInput.Value + "%", Location = new Point(289, 195), Size = new Size(47, 27) };
+                volumeInput.ValueChanged += delegate { volumePercent.Text = volumeInput.Value + "%"; };
+                Button soundPreview = MakeButton("试听落子声音", 166, delegate { stoneSound.Preview(volumeInput.Value); }); soundPreview.Name = "StoneSoundPreview"; soundPreview.Location = new Point(117, 235); soundPreview.Height = 30;
+                Label info = new Label { Text = "对局设置应用于下一局。\r\n音量确认后立即生效；0% 为静音。", Location = new Point(23, 281), Size = new Size(304, 42), ForeColor = muted };
                 Button ok = MakeButton("确定", 85, delegate {
                     if (handicapInput.Value == 1) { MessageBox.Show(dialog, "让子请选择 0 或 2–9 子。"); return; }
                     if ((komiInput.Value * 2) % 1 != 0) { MessageBox.Show(dialog, "贴目请输入整数或半目，例如 6.5 或 7.5。"); return; }
+                    try { if (persistEnginePreferences) AudioSettings.SaveVolume(volumeInput.Value); }
+                    catch (Exception ex) { MessageBox.Show(dialog, "无法保存音量：" + ex.Message, "设置", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                    stoneSound.Volume = volumeInput.Value;
                     komi = (double)komiInput.Value; handicap = (int)handicapInput.Value; rules = ruleInput.SelectedIndex == 1 ? "japanese" : "chinese-ogs"; dialog.DialogResult = DialogResult.OK;
-                }); ok.Location = new Point(198, 242);
-                dialog.Controls.AddRange(new Control[] { k, komiInput, h, handicapInput, ruleLabel, ruleInput, depthLabel, depthButton, info, ok }); dialog.AcceptButton = ok; dialog.ShowDialog(this);
+                }); ok.Name = "GameSettingsOk"; ok.Location = new Point(215, 340);
+                Button cancel = MakeButton("取消", 85, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "GameSettingsCancel"; cancel.Location = new Point(119, 340);
+                dialog.Controls.AddRange(new Control[] { k, komiInput, h, handicapInput, ruleLabel, ruleInput, depthLabel, depthButton, volumeLabel, volumeInput, volumePercent, soundPreview, info, ok, cancel }); dialog.AcceptButton = ok; dialog.CancelButton = cancel; dialog.ShowDialog(this);
             }
         }
         private void ShowHelp()
         {
-            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n选择执白后，AI 会先行；选择双方可自由摆棋与复盘。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度可选自定义，填写每步搜索次数。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n选择执白后，AI 会先行；选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度可选自定义，填写每步搜索访问次数。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CPU、GPU 及本地模型。\r\nCPU 内置 g170 b10（2020）；搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         private void OnShortcut(object sender, KeyEventArgs e)
         {

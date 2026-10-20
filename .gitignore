@@ -3,3 +3,7 @@ bin/
 *.tmp
 qa/*.exe
 qa/*.dll
+release/*/gpu/
+梓懿围棋-Windows-GPU-*.zip
+release/**/*.exe
+梓懿围棋-源码-*.zip

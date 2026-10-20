@@ -110,12 +110,13 @@ namespace GoDesk
             {
                 for (int i = 0; i < game.Size; i++)
                 {
-                    string col = ((char)('A' + i + (i >= 8 ? 1 : 0))).ToString();
+                    string col = BoardCoordinates.ColumnLabel(i, game.Size);
+                    string row = BoardCoordinates.RowLabel(i, game.Size);
                     float x = grid.Left + i * step, y = grid.Top + i * step;
                     g.DrawString(col, f, b, new PointF(x, wood.Top + (grid.Top - wood.Top) * .44f), sf);
                     g.DrawString(col, f, b, new PointF(x, wood.Bottom - (wood.Bottom - grid.Bottom) * .41f), sf);
-                    g.DrawString((game.Size - i).ToString(), f, b, new PointF(wood.Left + (grid.Left - wood.Left) * .43f, y), sf);
-                    g.DrawString((game.Size - i).ToString(), f, b, new PointF(wood.Right - (wood.Right - grid.Right) * .4f, y), sf);
+                    g.DrawString(row, f, b, new PointF(wood.Left + (grid.Left - wood.Left) * .43f, y), sf);
+                    g.DrawString(row, f, b, new PointF(wood.Right - (wood.Right - grid.Right) * .4f, y), sf);
                 }
             }
         }

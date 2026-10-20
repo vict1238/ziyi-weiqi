@@ -29,13 +29,24 @@ namespace GoDesk
             {
                 if (args.Length > 0 && args[0] == "--self-test")
                 {
-                    string result = GoGameTests.Run() + Environment.NewLine + SearchDepthTests.Run();
+                    string result = GoGameTests.Run() + Environment.NewLine + SearchDepthTests.Run() +
+                        Environment.NewLine + BoardCoordinatesTests.Run() + Environment.NewLine + EngineSettingsTests.Run() +
+                        Environment.NewLine + StoneSoundTests.Run();
                     WriteReport(args, "PASS\n" + result);
                     return 0;
                 }
                 if (args.Length > 0 && args[0] == "--engine-test")
                 {
                     string result = RunEngineChecksAsync().GetAwaiter().GetResult();
+                    WriteReport(args, "PASS\n" + result);
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--gpu-test")
+                {
+                    EngineSettings settings = EngineSettings.CreateGpu();
+                    settings.Validate();
+                    string result = "GPU profile: " + settings.Description + Environment.NewLine +
+                        RunEngineChecksAsync(settings).GetAwaiter().GetResult();
                     WriteReport(args, "PASS\n" + result);
                     return 0;
                 }
@@ -73,10 +84,10 @@ namespace GoDesk
             }
         }
 
-        private static async Task<string> RunEngineChecksAsync()
+        private static async Task<string> RunEngineChecksAsync(EngineSettings settings = null)
         {
             var report = new StringBuilder();
-            using (var engine = new KataGoEngine())
+            using (var engine = new KataGoEngine(settings ?? EngineSettings.CreateCpu()))
             {
                 engine.StatusChanged += delegate(string status) { Console.WriteLine(status); };
                 var game = new GoGame(19, 7.5);
@@ -179,7 +190,7 @@ namespace GoDesk
         private static int RunUiChecks(string[] args)
         {
             int exitCode = 0;
-            using (var form = new MainForm())
+            using (var form = new MainForm(EngineSettings.CreateCpu(), false))
             {
                 form.StartPosition = FormStartPosition.Manual;
                 form.Location = new Point(-20000, -20000);

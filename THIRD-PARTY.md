@@ -1,6 +1,25 @@
 # 梓懿围棋 — bundled third-party software
 
-梓懿围棋 bundles the following engine locally. No network service, account, Python, GPU driver, or Visual C++ runtime installation is used at runtime. The distribution needs 64-bit Windows with .NET Framework 4.8. The plain Eigen build does not require AVX2. Binaries are unchanged from the upstream archive.
+梓懿围棋 uses local KataGo engines on 64-bit Windows with .NET Framework 4.8. The standalone EXE embeds the CPU runtime below; the GPU portable package also includes the OpenCL runtime and kata1 model documented here. Gameplay needs no account, network service, or Python. The CPU Eigen build does not require AVX2; GPU use requires an OpenCL-capable graphics driver, with no CUDA installation. Upstream binaries are redistributed unchanged with their dependency trees.
+
+## GPU package: KataGo 1.18.1 OpenCL
+
+- Official release and source: https://github.com/lightvector/KataGo/releases/tag/v1.18.1 and https://github.com/lightvector/KataGo/tree/v1.18.1 .
+- Archive: https://github.com/lightvector/KataGo/releases/download/v1.18.1/katago-v1.18.1-opencl-windows-x64.zip .
+- Archive size: 6,004,137 bytes. SHA-256: `1710DB1903AB921AA6837A9599C8474F8A59F057650217C5D9BC125EE393A9FF`.
+- Backend: OpenCL. `prepare-gpu.ps1` preserves all files in the official archive, including `bz2.dll`, OpenSSL, zlib, libzip and Microsoft runtime DLLs, and places them in `gpu` next to `katago.exe`.
+- KataGo is MIT licensed. Original version-specific `LICENSE`, `CONTRIBUTORS`, release README, CLBlast Apache 2.0 license, half 2.2.0 MIT license, tclap 1.2.5 MIT notice and bzip2 notice are preserved under [gpu-licenses](gpu-licenses). Common dependency notices are included there as well.
+- Microsoft runtime DLLs retain their redistributable license; an original copy of the terms page is retained as `gpu-licenses/Microsoft-VisualC-Runtime-License.html`.
+
+### GPU kata1 b18 model
+
+- Original model: `kata1-b18c384nbt-s9996604416-d4316597426.bin.gz`, published 2024-05-26; 18 nested-bottleneck blocks, 384 channels.
+- Official download: https://media.katagotraining.org/uploaded/networks/models/kata1/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz .
+- Size: 97,898,094 bytes. SHA-256: `9D7A6AFED8FF5B74894727E156F04F0CD36060A24824892008FBB6E0CBA51F1D`.
+- License: [KataGo Neural Network License](https://katagotraining.org/network_license/), with MIT-style permission and required retention of its copyright and permission notice. The complete original page is retained in `gpu-licenses/Model-LICENSE.html`, and the applicable full notice in `gpu-licenses/Model-LICENSE.txt`. The page was retrieved on 2026-10-20 and its original copyright text is preserved.
+- The model bytes are copied unchanged to `gpu/model.bin.gz`; `gpu/runtime.json` records the original model identity, SHA-256, date, backend and engine version. The CPU g170 model below has its own CC0 dedication.
+
+The source distribution contains the pinned preparation script and notices; it downloads the GPU runtime/model on demand. The GPU portable distribution includes the ready-to-run files and their notices in `gpu/licenses`. See [GPU notice index](gpu-licenses/README.md) for original license sources.
 
 ## KataGo 1.14.1
 
@@ -46,7 +65,7 @@ SHA-256 of each runtime asset (before embedding):
 
 ## Local analysis configuration and search controls
 
-`analysis.cfg` is the application's own portable CPU configuration for the unmodified upstream binary: one simultaneous analysis, four search workers, four Eigen workers, Black-perspective scores, and a 2^16 neural cache. The application sets each query's visit target; the file's 128 visits is only a default for clients that omit a target. No `maxTime` setting or application per-analysis timeout is imposed. The 90-second model-startup watchdog does not limit an analysis after startup.
+The application generates its own local analysis configuration for each backend. CPU uses one simultaneous analysis, four search workers, four Eigen workers and a 2^16 neural cache; GPU uses sixteen search workers, a maximum batch size of 32 and a 2^18 neural cache. Scores use Black's perspective. The application sets every query's visit target; the configuration's 128 visits is a fallback for clients that omit a target. No `maxTime` setting or per-analysis timeout is imposed. Model-startup watchdogs are 90 seconds for CPU and five minutes for GPU/custom, including initial OpenCL tuning; they do not limit analysis after startup.
 
 Visit targets are sent as exact signed 64-bit JSON integers, including values above Int32. KataGo 1.14.1 itself accepts 1 through 2^50 visits per query; see the upstream parser at https://github.com/lightvector/KataGo/blob/v1.14.1/cpp/command/analysis.cpp#L875-L879 . Values above that native protocol range produce a visible engine error, without silently reducing the user's number. Continuous-thinking mode uses the engine's native 2^50 budget as its manual-stop workflow. The native integer counter remains finite.
 
