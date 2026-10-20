@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
@@ -53,10 +53,10 @@ namespace GoDesk
             try { engineSettings = startupSettings == null ? EngineSettings.Load() : startupSettings.Clone(); }
             catch (Exception ex)
             {
-                engineSettings = EngineSettings.GpuAvailable ? EngineSettings.CreateGpu() : EngineSettings.CreateCpu();
+                engineSettings = EngineSettings.CreateDefault();
                 settingsError = "引擎设置读取失败，请打开引擎 / 模型设置后确认：" + ex.Message;
             }
-            selectedDepthIndex = SearchDepth.DefaultIndex(engineSettings.NormalizedBackend == "gpu");
+            selectedDepthIndex = SearchDepth.DefaultIndex(engineSettings.IsGpu);
             Text = "梓懿围棋 · KataGo";
             try { Icon = Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location); } catch { }
             AutoScaleMode = AutoScaleMode.Dpi;
@@ -91,7 +91,7 @@ namespace GoDesk
             help.DropDownItems.Add("使用说明", null, delegate { ShowHelp(); });
             help.DropDownItems.Add("引擎 / 模型设置…", null, delegate { ShowEngineSettings(this); });
             help.DropDownItems.Add("第三方许可", null, delegate { Program.ShowLicenses(this); });
-            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.3\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），设置中可切换保留的模型或选择本地文件。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
+            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.4\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nNVIDIA 显卡可使用 CUDA 加速，设置中可选择 CUDA、OpenCL 或 CPU。\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），保留旧模型与本地模型选择。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
             menu.Items.Add(file); menu.Items.Add(help); MainMenuStrip = menu;
 
             Panel header = new Panel { Dock = DockStyle.Top, Height = 66, Padding = new Padding(26, 9, 24, 8), BackColor = Color.FromArgb(250, 249, 246) };
@@ -250,7 +250,7 @@ namespace GoDesk
             using (Form dialog = new Form { Name = "EngineModelSettings", Text = "引擎 / 模型设置", ClientSize = new Size(710, 502), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
             {
                 Label backendLabel = new Label { Text = "计算后端", Location = new Point(22, 23), Size = new Size(100, 27) };
-                ComboBox backend = Combo(new string[] { "CPU · 内置便携引擎", EngineSettings.GpuBackendDescription + " 套件", "自定义 · 本地 KataGo" }); backend.Name = "EngineBackend"; backend.Location = new Point(128, 19); backend.Width = 560;
+                ComboBox backend = Combo(new string[] { "CPU · 内置便携引擎", EngineSettings.CudaBackendDescription + " · NVIDIA 显卡", EngineSettings.GpuBackendDescription + " · 通用显卡", "自定义 · 本地 KataGo" }); backend.Name = "EngineBackend"; backend.Location = new Point(128, 19); backend.Width = 560;
                 Label executableLabel = new Label { Text = "KataGo 程序（.exe）", Location = new Point(22, 66), Size = new Size(310, 25) };
                 TextBox executable = new TextBox { Name = "EnginePath", Location = new Point(22, 93), Width = 587 };
                 Label modelLabel = new Label { Text = "神经网络模型 · 日期按官方上传 / 收录记录标注", Location = new Point(22, 138), Size = new Size(666, 25) };
@@ -270,8 +270,8 @@ namespace GoDesk
                 }); browseModel.Name = "BrowseModel"; browseModel.Location = new Point(616, 289); browseModel.Height = 30;
                 Label explanation = new Label { Name = "EngineSettingsExplanation", Location = new Point(22, 335), Size = new Size(666, 60), ForeColor = muted };
                 Label error = new Label { Name = "EngineSettingsError", Location = new Point(22, 397), Size = new Size(666, 50), ForeColor = Color.FromArgb(170, 68, 48) };
-                EngineSettings[] drafts = new EngineSettings[] { EngineSettings.CreateCpu(), EngineSettings.CreateGpu(), new EngineSettings { Backend = "custom", EnginePath = "", ModelPath = "", ModelId = "" } };
-                int previous = engineSettings.Backend == "gpu" ? 1 : engineSettings.Backend == "custom" ? 2 : 0;
+                EngineSettings[] drafts = new EngineSettings[] { EngineSettings.CreateCpu(), EngineSettings.CreateCuda(), EngineSettings.CreateGpu(), new EngineSettings { Backend = "custom", EnginePath = "", ModelPath = "", ModelId = "" } };
+                int previous = engineSettings.NormalizedBackend == "cuda" ? 1 : engineSettings.NormalizedBackend == "gpu" ? 2 : engineSettings.NormalizedBackend == "custom" ? 3 : 0;
                 drafts[previous] = engineSettings.Clone();
                 backend.SelectedIndex = previous;
                 bool refreshing = false;
@@ -299,7 +299,7 @@ namespace GoDesk
                     modelChoice.Items.Add("自定义模型文件…");
                     modelChoice.SelectedIndex = selected >= 0 ? selected : modelChoice.Items.Count - 1;
                     refreshModelDetails();
-                    explanation.Text = backend.SelectedIndex == 0 ? "内置 b10 轻量模型用于 CPU 便携运行；GPU 模型请在上方切换计算后端后选择。\r\n确认后应用；当前棋局保留。" : backend.SelectedIndex == 1 ? "GPU 套件默认选择最强模型；可直接切换 b18，或浏览其他本地模型。\r\n显卡首次调优与加载较慢，请耐心等待。确认后取消旧计算，保留棋局。" : "选择本地 KataGo 程序，可搭配套件模型或自定义模型。\r\n引擎需支持所选模型及 KataGo analysis JSON 协议。";
+                    explanation.Text = backend.SelectedIndex == 0 ? "内置 b10 轻量模型用于 CPU 便携运行；GPU 模型请在上方切换计算后端后选择。\r\n确认后应用；当前棋局保留。" : backend.SelectedIndex == 1 ? "CUDA 适用于 NVIDIA 显卡；完整包已附所需运行库，无需安装 CUDA 开发工具。\r\n默认使用最强模型，也可选择 b18。首次加载需稍候；确认后保留棋局。" : backend.SelectedIndex == 2 ? "OpenCL 适用于支持的 NVIDIA、AMD 和 Intel 显卡。\r\n与 CUDA 共用模型；首次调优可能需要数分钟。确认后保留棋局。" : "选择本地 KataGo 程序，可搭配套件模型或自定义模型。\r\n引擎需支持所选模型及 KataGo analysis JSON 协议。";
                     error.Text = "";
                     refreshing = false;
                 };
@@ -611,7 +611,7 @@ namespace GoDesk
         }
         private void ShowHelp()
         {
-            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n选择执白后，AI 会先行；选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择带日期的模型及自定义文件。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n选择执白后，AI 会先行；选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         private void OnShortcut(object sender, KeyEventArgs e)
         {

@@ -1,0 +1,34 @@
+# 梓懿围棋 v1.4.0
+
+本版正式加入 CUDA 加速。完整便携包随带 CUDA 运行库，在兼容的 NVIDIA 电脑上优先选择 CUDA；设置中保留 OpenCL、CPU 与自定义引擎。
+
+- CUDA / OpenCL 均为 KataGo 1.18.1。CUDA 使用 CUDA 12.1 / cuDNN 9.8，运行依赖位于应用的 `cuda` 目录，无需安装完整 CUDA Toolkit，仍需兼容显卡和驱动。
+- 两种 GPU 后端共用 `gpu/models`：默认最强 `kata1-tf3-b11c768-s11003M-d5973M-7gres`（2026-09-25 上传），保留旧 b18（2024-05-26 上传）；CPU 保留 2020 年 g170 b10，标注 2020-11-28 官方收录。
+- 搜索预设继续为 **256 / 1024 / 2048 / 4096 / 8192 / 16384**，GPU 启动默认 **2048**，CPU 默认 **256**，自定义与持续思考保持可用。
+- 旧内置 GPU 配置在适用的 NVIDIA 电脑迁移到 CUDA，并保留已选模型。版本 3 明确选择的后端、CPU 和自定义配置继续保留；确认切换时保留棋局、取消旧分析。
+- 补充缺少 DLL、驱动不兼容、无可用 CUDA 设备与 Windows 应用控制拦截的具体提示。应用只设置自己的 KataGo 子进程环境，不修改系统安全设置或全局 PATH。
+
+RTX 4060 Laptop、8GB、同一模型和配置，三个 19 路局面各测两轮，共 36 次正式查询。下表为耗时中位数，不含初始化与预热：
+
+| 搜索次数 | OpenCL | CUDA | 耗时中位数之比 |
+| --- | --- | --- | --- |
+| 1024 | 6.90 秒 | 2.18 秒 | 3.17 倍 |
+| 2048 | 13.16 秒 | 4.28 秒 | 3.07 倍 |
+| 4096 | 25.03 秒 | 7.70 秒 | 3.25 倍 |
+
+后台游戏、温度、功耗与局面会影响结果，速度倍数不等于棋力倍数。完整数据与来源随源码保存在 `qa/cuda-comparison.txt`、`qa/cuda-comparison.json`。
+
+## 下载
+
+| 文件 | 用途 |
+| --- | --- |
+| [ziyi-weiqi-Windows-CUDA-v1.4.0.zip](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-Windows-CUDA-v1.4.0.zip) | CUDA / OpenCL 完整便携包：主程序、两种 GPU 引擎、最强与旧 b18 模型、运行库和许可 |
+| [ziyi-weiqi-v1.4.0.exe](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-v1.4.0.exe) | 内置旧 b10 的 CPU 单文件程序 |
+| [ziyi-weiqi-source-v1.4.0.zip](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-source-v1.4.0.zip) | 完整源码、CPU 资源、许可与固定版本 GPU 准备脚本 |
+| [SHA256SUMS.txt](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/SHA256SUMS.txt) | 三个发布文件的 SHA-256 校验清单 |
+
+GPU 用户下载完整 ZIP，解压后运行 `梓懿围棋.exe`，保留相邻 `cuda`、`gpu` 文件夹。单独下载 EXE 使用的是内置 CPU 模型。
+
+应用源码为 MIT；NVIDIA 运行库适用随包的专有许可，kata1 模型适用原模型许可。保留 `cuda/licenses`、`gpu/licenses` 与全部第三方声明。Windows 智能应用控制可能拦截引擎，应用会显示具体提示并提供后端选择。
+
+源码构建：在 PowerShell 7 中依次运行 `build.ps1`、`prepare-gpu.ps1`、`prepare-cuda.ps1`；准备脚本固定官方来源并校验 SHA-256，可通过 `-SourceCache` 复用缓存。构建检查、最终程序的 CPU / CUDA / OpenCL 两模型检查与 UI 检查记录见源码和包内的验证记录。

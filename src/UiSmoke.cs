@@ -21,10 +21,11 @@ namespace GoDesk
             var board = (BoardControl)form.Controls.Find("GoBoard", true)[0];
             var level = (ComboBox)form.Controls.Find("SearchLevel", true)[0];
             CheckDepthPresets(form, level);
-            using (var gpuDefaults = new MainForm(EngineSettings.CreateGpu(), false))
+            using (var gpuDefaults = new MainForm(EngineSettings.CreateCuda(), false))
             {
-                Check(gpuDefaults.CurrentEngineSettings.ModelId == ModelCatalog.StrongestId && CurrentVisits(gpuDefaults) == 2048,
-                    "GPU startup must default to the strongest model and 2048 visits");
+                Check(gpuDefaults.CurrentEngineSettings.NormalizedBackend == "cuda" && gpuDefaults.CurrentEngineSettings.ModelId == ModelCatalog.StrongestId && CurrentVisits(gpuDefaults) == 2048,
+                    "CUDA startup must default to the strongest model and 2048 visits");
+                Check(((Label)Field(gpuDefaults, "profileLabel")).Text.Contains("CUDA"), "CUDA active profile does not identify its backend");
                 Check(gpuDefaults.CurrentEngineSettings.ModelDescription.Contains("2026-09-25"), "Strongest model date missing from active profile");
                 gpuDefaults.StartPosition = FormStartPosition.Manual;
                 gpuDefaults.Location = new Point(-20000, -20000);
@@ -33,7 +34,13 @@ namespace GoDesk
                 gpuDefaults.CaptureScreenshot(Path.Combine(outputFolder, "desktop-gpu-defaults.png"));
                 gpuDefaults.Close();
             }
-            report.AppendLine("Shared 256/1024/2048/4096/8192/16384 presets; CPU 256 and strongest GPU 2048 defaults: PASS");
+            using (var openClDefaults = new MainForm(EngineSettings.CreateGpu(), false))
+            {
+                Check(openClDefaults.CurrentEngineSettings.NormalizedBackend == "gpu" && openClDefaults.CurrentEngineSettings.ModelId == ModelCatalog.StrongestId && CurrentVisits(openClDefaults) == 2048,
+                    "OpenCL startup must default to the strongest model and 2048 visits");
+                Check(((Label)Field(openClDefaults, "profileLabel")).Text.Contains("OpenCL"), "OpenCL active profile does not identify its backend");
+            }
+            report.AppendLine("Shared 256/1024/2048/4096/8192/16384 presets; CPU 256 and strongest CUDA/OpenCL 2048 defaults: PASS");
             CheckCancelledCustomDepth(form, level);
             report.AppendLine("Unconfirmed custom selection keeps the committed depth; Cancel restores preset: PASS");
             level.SelectedIndex = 0;
@@ -237,19 +244,28 @@ namespace GoDesk
                 foreach (Form candidate in Application.OpenForms) if (candidate.Name == "EngineModelSettings") dialog = candidate;
                 if (dialog == null) return;
                 cancelTimer.Stop();
-                ((ComboBox)dialog.Controls.Find("EngineBackend", true)[0]).SelectedIndex = 1;
+                ComboBox backends = (ComboBox)dialog.Controls.Find("EngineBackend", true)[0];
+                Check(backends.Items.Count == 4 && backends.Items[1].ToString().Contains("CUDA") && backends.Items[2].ToString().Contains("OpenCL"), "CUDA, OpenCL, CPU and custom choices missing");
+                backends.SelectedIndex = 1;
                 ComboBox models = (ComboBox)dialog.Controls.Find("ModelSelection", true)[0];
                 Check(models.Items.Count == ModelCatalog.GpuModels.Length + 1 && ((ModelCatalogEntry)models.SelectedItem).Id == ModelCatalog.StrongestId,
-                    "GPU model selection does not default to strongest");
+                    "CUDA model selection does not default to strongest");
                 Check(((Label)dialog.Controls.Find("ModelDetails", true)[0]).Text.Contains("2026-09-25"), "Strongest model date missing in settings");
                 models.SelectedIndex = 1;
                 Check(((ModelCatalogEntry)models.SelectedItem).Id == ModelCatalog.PreviousGpuId &&
                     ((Label)dialog.Controls.Find("ModelDetails", true)[0]).Text.Contains("2024-05-26"), "Previous b18 model or its date missing in settings");
                 models.SelectedIndex = 0;
+                string cudaEngine = ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text;
+                Check(cudaEngine.Replace('\\', '/').EndsWith("cuda/katago.exe", StringComparison.OrdinalIgnoreCase), "CUDA program path incorrect");
+                backends.SelectedIndex = 2;
+                Check(((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text.Replace('\\', '/').EndsWith("gpu/katago.exe", StringComparison.OrdinalIgnoreCase), "OpenCL program path incorrect");
+                Check(((ModelCatalogEntry)models.SelectedItem).Id == ModelCatalog.StrongestId, "OpenCL model selection does not default to strongest");
+                backends.SelectedIndex = 1;
+                Check(((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text == cudaEngine && ((ModelCatalogEntry)models.SelectedItem).Id == ModelCatalog.StrongestId, "Switching backends changed CUDA draft");
                 TextBox shownEngine = (TextBox)dialog.Controls.Find("EnginePath", true)[0];
                 TextBox shownModel = (TextBox)dialog.Controls.Find("ModelPath", true)[0];
                 string originalEngine = shownEngine.Text, originalModel = shownModel.Text;
-                shownEngine.Text = @"gpu\katago.exe";
+                shownEngine.Text = @"cuda\katago.exe";
                 shownModel.Text = ModelCatalog.Find(ModelCatalog.StrongestId).RelativePath;
                 using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
                 {
@@ -258,7 +274,7 @@ namespace GoDesk
                 }
                 shownEngine.Text = originalEngine;
                 shownModel.Text = originalModel;
-                ((ComboBox)dialog.Controls.Find("EngineBackend", true)[0]).SelectedIndex = 2;
+                backends.SelectedIndex = 3;
                 models.SelectedIndex = models.Items.Count - 1;
                 ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text = @"Z:\missing\katago.exe";
                 ((TextBox)dialog.Controls.Find("ModelPath", true)[0]).Text = @"Z:\missing\model.bin.gz";
@@ -278,7 +294,7 @@ namespace GoDesk
                 if (dialog == null) return;
                 confirmTimer.Stop();
                 ComboBox backend = (ComboBox)dialog.Controls.Find("EngineBackend", true)[0];
-                backend.SelectedIndex = 2;
+                backend.SelectedIndex = 3;
                 ComboBox models = (ComboBox)dialog.Controls.Find("ModelSelection", true)[0];
                 models.SelectedIndex = models.Items.Count - 1;
                 ((TextBox)dialog.Controls.Find("EnginePath", true)[0]).Text = @"Z:\missing\katago.exe";

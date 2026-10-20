@@ -1,0 +1,44 @@
+﻿梓懿围棋 1.4 验证记录
+2026-10-20，Windows 11 x64，.NET Framework 4.8
+
+自动检查
+187项规则与SGF、47项搜索次数、1323项坐标、83项引擎配置、24项模型目录、17项落子音效，共1681项断言全部通过。
+新增CUDA/NVIDIA默认选择、v1/v2到v3迁移、v3明确OpenCL/CPU/自定义保留、模型ID保留、相对路径和启动错误提示检查。
+Win32枚举识别本机非主显示的NVIDIA显卡；CPU单文件、外部路径、模型目录和取消检查通过，测试不写入用户偏好。
+
+正式程序实际引擎
+从release/梓懿围棋-v1.4.0/梓懿围棋.exe运行检查，以下组合全部PASS：
+CPU KataGo1.14.1 / g170 b10；CUDA KataGo1.18.1 / 最强tf3；CUDA / 旧b18；OpenCL1.18.1 / 最强tf3；OpenCL / 旧b18。
+每个组合验证19路合法落子与361点领地、9路SGF初始摆子和先行方、取消后继续、30亿次预算实时进度、持续思考手动结束及有效结果。
+CUDA直接使用发布目录内DLL，无系统CUDA Toolkit依赖；只为所属KataGo子进程添加DLL目录。
+报告位于qa/engine-test.txt、cuda-test.txt、cuda-b18-test.txt、gpu-test.txt、gpu-b18-test.txt。
+
+CUDA运行库部署
+固定官方KataGo1.18.1 CUDA12.1/cuDNN9.8.0、CUDA runtime12.1.105、cuBLAS12.1.3.1、NVRTC12.1.105、cuDNN9.8.0.87。
+下载和选定DLL核对长度/SHA256，二进制和GPU架构数据保持完整。
+最小部署保留12个NVIDIA DLL，移除未调用的cuDNN Adv和nvBLAS；PE导入、上游API及分库说明相符。
+隔离PATH仅含部署目录与Windows，两模型各完成19/9/13路真实查询及ownership；加载的CUDA/cuDNN/cuBLAS模块均来自该部署。
+源码依据与许可来源见cuda-licenses/DEPLOYMENT.md和README.md；缓存重跑及PowerShell5/7输出一致性通过。
+本机Windows PowerShell5执行策略限制直接运行脚本；实际统一构建使用已配置的PowerShell7，未改系统策略。
+
+性能对比
+RTX4060 Laptop 8GB，驱动610.88，同一最强模型，16搜索线程、batch32、单NN服务线程。
+三个官方公开19路局面各测两轮，共36次正式查询；逐次清NN缓存，启动与预热另计。
+1024次中位耗时：OpenCL6.897秒，CUDA2.175秒，3.17倍。
+2048次中位耗时：OpenCL13.164秒，CUDA4.285秒，3.07倍。
+4096次中位耗时：OpenCL25.028秒，CUDA7.698秒，3.25倍。
+正式对比前退出游戏并暂停动态壁纸；受后台占用影响的诊断数据不计入结果。
+明细、配对统计、公开棋局和来源在qa/cuda-comparison.txt、cuda-comparison.json及cuda-benchmark-input。
+
+桌面交互
+正式EXE完整--ui-test通过：棋盘点击、CPU自动应手、推荐、领地、悔棋、自弈、SGF载入回看导出、执白先行。
+CUDA/OpenCL/CPU/自定义四项、路径、模型日期、取消/确认和切换保留棋局通过。
+GPU启动最强模型/2048次、CPU256次，六档预设、超大自定义、持续思考、旧回调隔离通过。
+声音草稿、取消、确认和静音通过，检查不播放可听音或修改用户音量。
+qa/desktop-gpu-defaults.png和desktop-engine-settings.png展示CUDA待命配置、最强模型及2048次，已目检。
+
+文件与发布
+完整包保留cuda、gpu及各自许可，共享两个原始GPU模型；CPU EXE另提供独立运行方式。
+NVIDIA运行库遵循原始专有协议，应用MIT不替代这些条款；官方EULA、acknowledgements与原始wheel许可随包保留。
+发布工具验证ZIP CRC和文件清单，为资产生成SHA256，并在公开前核对GitHub返回的大小和摘要。
+GitHub写入共用440000字节/秒限速，低于用户要求的0.5MB/s；历史release保持可用。

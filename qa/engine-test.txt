@@ -1,6 +1,6 @@
 ﻿PASS
-19x19 real KataGo analysis + ownership + legal move: R4; 0.72s
-9x9 SGF setup stones + initial player + legal move: G5
+19x19 real KataGo analysis + ownership + legal move: Q3; 0.82s
+9x9 SGF setup stones + initial player + legal move: F6
 Cancellation: PASS
 Engine remains usable after cancellation: F5
 Custom 3,000,000,000 visits accepted without integer overflow + live progress + cancel: PASS

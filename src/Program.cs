@@ -42,9 +42,10 @@ namespace GoDesk
                     WriteReport(args, "PASS\n" + result);
                     return 0;
                 }
-                if (args.Length > 0 && args[0] == "--gpu-test")
+                if (args.Length > 0 && (args[0] == "--gpu-test" || args[0] == "--cuda-test"))
                 {
-                    EngineSettings settings = EngineSettings.CreateGpu(args.Length > 2 ? args[2] : ModelCatalog.StrongestId);
+                    string modelId = args.Length > 2 ? args[2] : ModelCatalog.StrongestId;
+                    EngineSettings settings = args[0] == "--cuda-test" ? EngineSettings.CreateCuda(modelId) : EngineSettings.CreateGpu(modelId);
                     settings.Validate();
                     string result = "GPU profile: " + settings.Description + Environment.NewLine +
                         RunEngineChecksAsync(settings).GetAwaiter().GetResult();

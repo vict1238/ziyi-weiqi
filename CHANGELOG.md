@@ -1,5 +1,16 @@
 # 版本记录
 
+## 梓懿围棋 1.4.0 — 2026-10-20
+
+[查看发布](https://github.com/vict1238/ziyi-weiqi/releases/tag/v1.4.0)
+
+- 实装 KataGo 1.18.1 CUDA 12.1 / cuDNN 9.8。完整便携包随带运行库，NVIDIA 电脑优先 CUDA，保留 OpenCL、CPU 与自定义后端选择。
+- 两个 GPU 后端共用原有最强 tf3 和旧 b18 模型，日期与原始身份保持可见；GPU 默认 2048 次，六档预设、自定义及持续思考保持可用。
+- 配置升级到版本 3。旧内置 GPU 配置在可用的 NVIDIA 环境迁移为 CUDA，并保留模型；版本 3 的明确选择、CPU 和自定义配置继续保留。
+- CUDA 路径相对便携包保存，运行依赖仅影响 KataGo 子进程；对缺 DLL、驱动不兼容、无可用设备和 Windows 应用控制拦截提供具体错误提示。
+- 增加固定下载与校验的 CUDA 准备脚本，附 NVIDIA 原始许可、第三方声明及部署验证；应用源码 MIT 与 NVIDIA 专有运行库条款分别适用。
+- RTX 4060 Laptop 8GB 同模型、同配置的 36 次正式对比：1024 / 2048 / 4096 次搜索的 CUDA 耗时中位数为 2.18 / 4.28 / 7.70 秒，约为 OpenCL 速度的 3.17 / 3.07 / 3.25 倍。计时排除初始化与预热，详见 `qa/cuda-comparison.txt`。
+
 ## 梓懿围棋 1.3.0 — 2026-10-20
 
 [查看发布](https://github.com/vict1238/ziyi-weiqi/releases/tag/v1.3.0)

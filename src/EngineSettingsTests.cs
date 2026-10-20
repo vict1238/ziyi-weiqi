@@ -59,7 +59,7 @@ namespace GoDesk
             try { EngineSettings.ParseSettings("{\"ModelPath\":123}", true); } catch (FormatException) { rejected = true; }
             check(rejected, "wrong settings field type rejected");
             rejected = false;
-            try { EngineSettings.ParseSettings("{\"Version\":3}", true); } catch (FormatException) { rejected = true; }
+            try { EngineSettings.ParseSettings("{\"Version\":4}", true); } catch (FormatException) { rejected = true; }
             check(rejected, "unknown future schema does not silently overwrite preferences");
             var custom = new EngineSettings { Backend = "custom", ModelId = "" };
             rejected = false;
@@ -83,7 +83,7 @@ namespace GoDesk
 
             string serialized = previous.SerializeSettings();
             var content = new JavaScriptSerializer().DeserializeObject(serialized) as Dictionary<string, object>;
-            check((int)content["Version"] == 2 && (string)content["ModelId"] == ModelCatalog.PreviousGpuId, "new save schema keeps explicit network ID");
+            check((int)content["Version"] == 3 && (string)content["ModelId"] == ModelCatalog.PreviousGpuId, "new save schema keeps explicit network ID");
             check(!Path.IsPathRooted((string)content["EnginePath"]) && !Path.IsPathRooted((string)content["ModelPath"]), "packaged settings portable across folder moves");
             var roundTrip = EngineSettings.ParseSettings(serialized, true);
             check(roundTrip.ModelId == ModelCatalog.PreviousGpuId && roundTrip.MigrationNotice == "", "new explicit previous model is not remigrated");
@@ -106,16 +106,68 @@ namespace GoDesk
             try { unknown.Validate(); } catch (ArgumentException) { rejected = true; }
             check(rejected, "unknown saved model never falls back to another network");
 
+            var cuda = EngineSettings.CreateCuda();
+            check(cuda.Backend == "cuda" && cuda.IsGpu && gpu.IsGpu && !cpu.IsGpu && !custom.IsGpu, "CUDA and OpenCL share GPU semantics");
+            check(cuda.EnginePath == Path.Combine("cuda", "katago.exe") && cuda.ModelId == ModelCatalog.StrongestId, "CUDA uses its own engine and strongest model");
+            check(cuda.ResolvedModelPath == gpu.ResolvedModelPath && cuda.ModelPath == gpu.ModelPath, "CUDA and OpenCL share a single network file");
+            check(cuda.Description.Contains("CUDA") && cuda.Description.Contains("2026-09-25"), "CUDA backend and model date remain visible");
+            check(EngineSettings.CreateDefault(true, true, true).Backend == "cuda", "NVIDIA with CUDA package defaults to CUDA");
+            check(EngineSettings.CreateDefault(true, true, false).Backend == "gpu", "AMD or Intel with both packages defaults to OpenCL");
+            check(EngineSettings.CreateDefault(true, false, true).Backend == "gpu", "OpenCL package remains usable without CUDA files");
+            check(EngineSettings.CreateDefault(false, true, false).Backend == "cpu", "CUDA-only package does not default to unsupported hardware");
+            check(EngineSettings.CreateDefault(false, true, true).Backend == "cuda", "NVIDIA can use standalone CUDA package");
+            check(EngineSettings.CreateDefault(false, false, true).Backend == "cpu", "single file CPU application remains CPU on NVIDIA");
+            check(EngineSettings.IsNvidiaAdapter("NVIDIA GeForce RTX 4060 Laptop GPU", ""), "hybrid NVIDIA identified by adapter description");
+            check(EngineSettings.IsNvidiaAdapter("Display adapter", @"PCI\VEN_10DE&DEV_28E0"), "NVIDIA hardware vendor recognized when label is generic");
+            check(!EngineSettings.IsNvidiaAdapter("Intel Iris Xe", @"PCI\VEN_8086") && !EngineSettings.IsNvidiaAdapter(null, null), "other or absent adapters do not select CUDA");
+            var migratedV1Cuda = EngineSettings.ParseSettings("{\"Version\":1,\"Backend\":\"cpu\"}", true, true, true);
+            check(migratedV1Cuda.Backend == "cuda" && migratedV1Cuda.ModelId == ModelCatalog.StrongestId && migratedV1Cuda.MigrationNotice.Contains("CUDA"), "legacy embedded default migrates to CUDA strongest");
+            var migratedV2Cuda = EngineSettings.ParseSettings(staleJson, true, true, true);
+            check(migratedV2Cuda.Backend == "cuda" && migratedV2Cuda.ModelId == ModelCatalog.PreviousGpuId, "version 2 bundled GPU migration preserves previous model choice");
+            check(migratedV2Cuda.EnginePath == cuda.EnginePath && migratedV2Cuda.MigrationNotice.Contains("保留"), "CUDA migration repairs stale package path and explains switch");
+            check(EngineSettings.ParseSettings(staleJson, true, true, false).Backend == "gpu", "version 2 OpenCL remains OpenCL on AMD/Intel");
+            check(EngineSettings.ParseSettings(staleJson, true, false, true).Backend == "gpu", "version 2 OpenCL remains OpenCL without CUDA files");
+            var explicitOpenCl = EngineSettings.ParseSettings(previous.SerializeSettings(), true, true, true);
+            check(explicitOpenCl.Backend == "gpu" && explicitOpenCl.ModelId == ModelCatalog.PreviousGpuId && explicitOpenCl.MigrationNotice == "", "version 3 explicit OpenCL selection is respected on NVIDIA");
+            var explicitCpu = EngineSettings.ParseSettings(EngineSettings.CreateCpu().SerializeSettings(), true, true, true);
+            check(explicitCpu.Backend == "cpu" && explicitCpu.MigrationNotice == "", "version 3 explicit CPU selection is respected");
+            var version2Cpu = EngineSettings.ParseSettings("{\"Version\":2,\"Backend\":\"cpu\",\"ModelId\":\"" + ModelCatalog.LegacyCpuId + "\"}", true, true, true);
+            check(version2Cpu.Backend == "cpu", "version 2 explicit CPU choice is respected");
+            var customOnNvidia = EngineSettings.ParseSettings(customCatalog.SerializeSettings(), true, true, true);
+            check(customOnNvidia.Backend == "custom" && customOnNvidia.EnginePath == customCatalogRoundTrip.EnginePath, "custom executable unaffected by CUDA availability");
+            var explicitCuda = EngineSettings.ParseSettings(cuda.SerializeSettings(), true, true, false);
+            check(explicitCuda.Backend == "cuda" && explicitCuda.MigrationNotice == "", "explicit CUDA remains repairable instead of silently changing backend on another PC");
+            var oldExternalGpu = EngineSettings.ParseSettings("{\"Version\":2,\"Backend\":\"gpu\",\"EnginePath\":\"C:/external/katago.exe\",\"ModelPath\":\"C:/external/network.bin.gz\"}", true, true, true);
+            check(oldExternalGpu.Backend == "gpu" && oldExternalGpu.EnginePath == "C:/external/katago.exe" && oldExternalGpu.ModelId == "", "version 2 external GPU profile is never migrated");
+            var movedCuda = EngineSettings.ParseSettings("{\"Version\":3,\"Backend\":\"cuda\",\"EnginePath\":\"C:/old/cuda/katago.exe\",\"ModelId\":\"" + ModelCatalog.PreviousGpuId + "\",\"ModelPath\":\"C:/wrong.bin.gz\"}", true, true, true);
+            check(movedCuda.EnginePath == cuda.EnginePath && movedCuda.ModelPath == previous.ModelPath, "CUDA executable and catalog network stay portable after a folder move");
+            var cudaContent = new JavaScriptSerializer().DeserializeObject(movedCuda.SerializeSettings()) as Dictionary<string, object>;
+            check((int)cudaContent["Version"] == 3 && (string)cudaContent["Backend"] == "cuda" && !Path.IsPathRooted((string)cudaContent["EnginePath"]), "saved CUDA profile uses portable version 3 schema");
+            rejected = false;
+            try { EngineSettings.CreateCuda(ModelCatalog.LegacyCpuId); } catch (ArgumentException) { rejected = true; }
+            check(rejected, "CUDA rejects embedded CPU network rather than relabelling it");
+            check(KataGoEngine.DescribeLaunchFailure("cuda", 4551, "blocked").Contains("Windows Security"), "Windows app-control block has actionable explanation");
+            check(KataGoEngine.DescribeLaunchFailure("cuda", 126, "missing").Contains("完整解压") && KataGoEngine.DescribeLaunchFailure("cuda", 193, "invalid").Contains("OpenCL"), "CUDA loader failures explain repair and explicit alternative");
+            check(KataGoEngine.DescribeLaunchFailure("cpu", 5, "denied").Contains("denied"), "other Windows loader details retained");
+            check(KataGoEngine.DescribeProcessExit("cuda", unchecked((int)0xC0000135), "").Contains("DLL"), "missing CUDA dependency exit code explained");
+            check(KataGoEngine.DescribeProcessExit("cuda", unchecked((int)0xC0000139), "").Contains("版本不匹配"), "CUDA entry-point mismatch explained");
+            check(KataGoEngine.DescribeProcessExit("cuda", 1, "CUDA driver version is insufficient for CUDA runtime version").Contains("更新 NVIDIA 驱动"), "unsupported driver has concrete remediation");
+            check(KataGoEngine.DescribeProcessExit("cuda", 1, "cudaErrorNoDevice").Contains("没有找到"), "unavailable CUDA adapter has explicit error");
+            check(KataGoEngine.DescribeProcessExit("gpu", 1, "OpenCL original detail") == "OpenCL original detail", "OpenCL runtime errors preserve original details");
+
             string cpuConfig = KataGoEngine.BuildAnalysisConfiguration("cpu");
             string gpuConfig = KataGoEngine.BuildAnalysisConfiguration("gpu");
+            string cudaConfig = KataGoEngine.BuildAnalysisConfiguration("cuda");
             check(cpuConfig.Contains("numEigenThreadsPerModel = 4"), "CPU Eigen setting");
             check(!gpuConfig.Contains("Eigen"), "GPU config excludes Eigen-only settings");
             check(gpuConfig.Contains("numSearchThreadsPerAnalysisThread = 16"), "GPU search workers");
             check(gpuConfig.Contains("nnMaxBatchSize = 32"), "GPU batch size");
             check(gpuConfig.Contains("reportAnalysisWinratesAs = BLACK") && gpuConfig.Contains("wideRootNoise = 0.0"), "playing and score semantics preserved");
             check(!gpuConfig.Contains("maxTime") && !cpuConfig.Contains("maxTime"), "no per-analysis time cutoff");
+            check(cudaConfig == gpuConfig, "CUDA and OpenCL use matching search budget semantics and batching");
             using (var engine = new KataGoEngine()) check(engine.Status.Contains("CPU"), "parameterless checks use CPU");
             using (var engine = new KataGoEngine(malformed)) check(engine.Status.Contains("GPU"), "constructor preserves repairable GPU profile");
+            using (var engine = new KataGoEngine(cuda)) check(engine.Status.Contains("CUDA"), "CUDA startup status identifies actual selected backend");
             return "PASS " + assertions + " engine settings assertions (model migration, path portability, no preference writes).";
         }
     }

@@ -1,0 +1,52 @@
+{
+  "repository": "https://github.com/lightvector/KataGo",
+  "tag": "v1.18.1",
+  "commit": "92ee95c0a4b25fec214da00951ab69e97e207729",
+  "source_path": "cpp/tests/testcommon.cpp",
+  "source_url": "https://raw.githubusercontent.com/lightvector/KataGo/92ee95c0a4b25fec214da00951ab69e97e207729/cpp/tests/testcommon.cpp",
+  "function": "TestCommon::getBenchmarkSGFData(19)",
+  "moves_count": 276,
+  "board_size": 19,
+  "original_sgf_komi": 7.5,
+  "original_sgf_rules_property": null,
+  "benchmark_analysis_rules": "chinese-ogs",
+  "benchmark_positions": [
+    {
+      "name": "opening",
+      "turn": 0
+    },
+    {
+      "name": "middle",
+      "turn": 96
+    },
+    {
+      "name": "late",
+      "turn": 192
+    }
+  ],
+  "extraction": "JSON-decode only the C++ string literal in the boardSize == 19 branch; no external source executed; SGF exact decoded bytes, no trailing newline. Single main line, no branches, comments or setup stones. Convert SGF aa(top left) to standard GTP A19, skipping I.",
+  "validation": "All source moves verified for legal occupancy, captures, no suicide and simple-ko prohibition by local independent Python checks; colors alternate. No GPU used.",
+  "validation_captures": {
+    "B": 16,
+    "W": 13
+  },
+  "files": {
+    "katago-v1.18.1-testcommon.cpp": {
+      "bytes": 67401,
+      "sha256": "1c06773f5aa6072d155b0af40f09b482aef178d0823900da823b1d7da45e20e6"
+    },
+    "katago-v1.18.1-benchmark-19x19.sgf": {
+      "bytes": 1687,
+      "sha256": "d9819386fc4018b5f706c1871356b47b33081d8d63a0395e3180637e99bbe61a"
+    },
+    "positions.json": {
+      "bytes": 14014,
+      "sha256": "793cca984337486bb92be15283a751bf6453158ad38ab64ebe0ee46bd4791af2"
+    },
+    "KataGo-LICENSE.txt": {
+      "bytes": 2616,
+      "sha256": "ead22455d923920cd152546d89e4f415c94d6b580aa109fda3b57a69c57c32e0"
+    }
+  },
+  "license_source_url": "https://raw.githubusercontent.com/lightvector/KataGo/92ee95c0a4b25fec214da00951ab69e97e207729/LICENSE"
+}

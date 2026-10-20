@@ -1,0 +1,8 @@
+﻿PASS
+GPU profile: GPU · CUDA · b18c384nbt 原 GPU 模型 · 2024-05-26（官方上传）
+19x19 real KataGo analysis + ownership + legal move: R17; 2.37s
+9x9 SGF setup stones + initial player + legal move: G6
+Cancellation: PASS
+Engine remains usable after cancellation: E5
+Custom 3,000,000,000 visits accepted without integer overflow + live progress + cancel: PASS
+Continuous search -> Stop -> usable final best move and territory: Q16

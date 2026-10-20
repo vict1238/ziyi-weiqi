@@ -63,7 +63,8 @@ namespace GoDesk
             if (settings == null) throw new ArgumentNullException("settings");
             this.settings = settings.Clone();
             string backend = this.settings.NormalizedBackend;
-            engineName = backend == "cpu" ? "KataGo CPU" : backend == "gpu" ? "KataGo GPU" : "自定义 KataGo";
+            engineName = backend == "cpu" ? "KataGo CPU" : backend == "gpu" ? "KataGo GPU · OpenCL" :
+                backend == "cuda" ? "KataGo GPU · CUDA" : "自定义 KataGo";
             status = engineName + " 引擎尚未启动";
             // Path existence is deliberately deferred to startup, allowing the UI
             // to repair a saved profile after moving/removing an external model.
@@ -188,6 +189,13 @@ namespace GoDesk
                     StandardOutputEncoding = Encoding.UTF8,
                     StandardErrorEncoding = Encoding.UTF8
                 };
+                if (settings.NormalizedBackend == "cuda")
+                {
+                    // Scope DLL discovery to this child process. Installing a
+                    // system CUDA Toolkit or changing Windows PATH is unnecessary.
+                    string inheritedPath = info.EnvironmentVariables["PATH"] ?? "";
+                    info.EnvironmentVariables["PATH"] = Path.GetDirectoryName(paths.Executable) + Path.PathSeparator + inheritedPath;
+                }
                 Process launched = new Process { StartInfo = info, EnableRaisingEvents = true };
                 attempted = launched;
                 TaskCompletionSource<bool> startup = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -216,17 +224,20 @@ namespace GoDesk
                         launched.BeginErrorReadLine();
                         WriteLocked(new Dictionary<string, object> { { "id", readyId }, { "action", "query_version" } });
                     }
-                    catch
+                    catch (Exception error)
                     {
                         process = null;
-                        launched.Dispose();
+                        var windowsError = error as System.ComponentModel.Win32Exception;
+                        if (windowsError != null)
+                            throw new InvalidOperationException(DescribeLaunchFailure(settings.NormalizedBackend, windowsError.NativeErrorCode, windowsError.Message), error);
                         throw;
                     }
                 }
                 string selectedBackend = settings.NormalizedBackend;
                 bool cpu = selectedBackend == "cpu";
-                SetStatus(cpu ? "正在加载 CPU 围棋模型…" : selectedBackend == "gpu" ?
-                    "正在加载 " + EngineSettings.GpuBackendDescription + " 模型；首次初始化可能需要数分钟，可取消…" : "正在加载自定义引擎与模型；可取消…");
+                SetStatus(cpu ? "正在加载 CPU 围棋模型…" : settings.IsGpu ?
+                    "正在加载 " + (selectedBackend == "cuda" ? EngineSettings.CudaBackendDescription : EngineSettings.GpuBackendDescription) +
+                    " 模型；首次初始化可能需要数分钟，可取消…" : "正在加载自定义引擎与模型；可取消…");
                 int timeoutMilliseconds = cpu ? 90000 : 300000;
                 Task completed = await Task.WhenAny(startup.Task, Task.Delay(timeoutMilliseconds, cancellation.Token)).ConfigureAwait(false);
                 cancellation.Token.ThrowIfCancellationRequested();
@@ -406,7 +417,10 @@ namespace GoDesk
                 if (source != process) return;
                 ready = false;
                 process = null;
-                detail = recentErrors.Count == 0 ? "进程已退出" : recentErrors.Last();
+                string reported = recentErrors.Count == 0 ? "进程已退出" : String.Join(" | ", recentErrors);
+                int exitCode;
+                try { exitCode = source.ExitCode; } catch (InvalidOperationException) { exitCode = 0; }
+                detail = DescribeProcessExit(settings.NormalizedBackend, exitCode, reported);
                 var error = new InvalidOperationException(engineName + " 已退出：" + detail);
                 FailAllLocked(error);
                 if (readySignal != null) readySignal.TrySetException(error);
@@ -503,6 +517,36 @@ namespace GoDesk
         {
             task.ContinueWith(failed => { var observed = failed.Exception; }, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
+        internal static string DescribeLaunchFailure(string backend, int errorCode, string detail)
+        {
+            if (errorCode == 4551)
+                return "Windows 应用控制策略阻止了 KataGo（错误 4551）。请查看 Windows Security 的应用控制拦截记录，确认程序来自本发布包后手动处理；也可在 AI 引擎设置中选择 OpenCL 或 CPU。";
+            if (backend == "cuda" && (errorCode == 2 || errorCode == 126 || errorCode == 193))
+                return "CUDA 引擎或运行库缺失/不匹配（错误 " + errorCode + "）。请完整解压 GPU 包，保留 cuda 文件夹内的全部 DLL；也可在 AI 引擎设置中选择 OpenCL。原始信息：" + detail;
+            return "无法启动 KataGo（Windows 错误 " + errorCode + "）：" + detail;
+        }
+
+        internal static string DescribeProcessExit(string backend, int exitCode, string detail)
+        {
+            uint code = unchecked((uint)exitCode);
+            if (code == 0xC0000428)
+                return "Windows 应用控制或签名策略阻止了 KataGo。请检查 Windows Security 的拦截记录，确认程序来源后手动处理；也可在设置中选择 OpenCL 或 CPU。";
+            if (backend == "cuda")
+            {
+                if (code == 0xC0000135 || code == 0xC0000139 || code == 0xC000007B)
+                    return "CUDA 运行库缺失或版本不匹配（退出码 0x" + code.ToString("X8", CultureInfo.InvariantCulture) +
+                        "）。请完整解压 GPU 包，保留 cuda 文件夹内的全部 DLL；若仍失败，请安装/修复 Microsoft Visual C++ 2015–2022 x64 运行库，或在设置中选择 OpenCL。";
+                string reported = detail ?? "";
+                if (reported.IndexOf("driver version is insufficient", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    reported.IndexOf("cudaErrorInsufficientDriver", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return "NVIDIA 显卡驱动不支持此 CUDA 运行库，请更新 NVIDIA 驱动，或在设置中选择 OpenCL。原始信息：" + reported;
+                if (reported.IndexOf("no CUDA-capable device", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    reported.IndexOf("cudaErrorNoDevice", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return "没有找到可用的 NVIDIA CUDA 显卡，请检查 NVIDIA 驱动，或在设置中选择 OpenCL/CPU。原始信息：" + reported;
+            }
+            return detail;
         }
 
         private sealed class EngineLaunchPaths

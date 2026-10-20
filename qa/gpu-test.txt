@@ -1,6 +1,6 @@
 ﻿PASS
 GPU profile: GPU · OpenCL · tf3-b11c768 最强模型 · 2026-09-25（官方上传）
-19x19 real KataGo analysis + ownership + legal move: R4; 193.13s
+19x19 real KataGo analysis + ownership + legal move: R4; 4.31s
 9x9 SGF setup stones + initial player + legal move: G5
 Cancellation: PASS
 Engine remains usable after cancellation: E5

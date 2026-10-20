@@ -1,6 +1,15 @@
 # 梓懿围棋 — bundled third-party software
 
-梓懿围棋 uses local KataGo engines on 64-bit Windows with .NET Framework 4.8. The standalone EXE embeds the CPU runtime below; the GPU portable package also includes the OpenCL runtime and both kata1 models documented here. Gameplay needs no account, network service, or Python. The CPU Eigen build does not require AVX2; GPU use requires an OpenCL-capable graphics driver, with no CUDA installation. Upstream binaries are redistributed unchanged with their dependency trees.
+梓懿围棋 uses local KataGo engines on 64-bit Windows with .NET Framework 4.8. The standalone EXE embeds the CPU runtime below; the full portable package also includes CUDA, OpenCL and both kata1 models. Gameplay needs no account, network service, or Python. CUDA requires a compatible NVIDIA GPU and driver; its app-local runtime is included, without installing the CUDA Toolkit or changing global PATH. OpenCL uses the GPU vendor's driver. All shipped upstream binaries are unmodified.
+
+## CUDA package: KataGo 1.18.1 and NVIDIA runtimes
+
+- Official engine: `katago-v1.18.1-cuda12.1-cudnn9.8.0-windows-x64.zip`, 9,711,098 bytes, SHA-256 `2A45CC69057D4D73CF1E7164023E70EB093E3BF61A16897BE1A15717E5B2C1E4`, from https://github.com/lightvector/KataGo/releases/tag/v1.18.1 .
+- NVIDIA runtime versions: CUDA runtime 12.1.105, cuBLAS 12.1.3.1, NVRTC 12.1.105 and cuDNN 9.8.0.87. Exact official URLs, sizes, archive hashes and selected DLL hashes are pinned in `cuda-licenses/sources.json` and checked by `prepare-cuda.ps1`.
+- These NVIDIA components are proprietary software governed by their original agreements, not the application's MIT license. The CUDA 12.1 agreement's Attachment A and the cuDNN 9.8 supplement identify the redistributable runtime components. The original NVIDIA terms, third-party acknowledgements and wheel notices are preserved under [cuda-licenses](cuda-licenses) and copied to `cuda/licenses` in the complete package. Use and redistribution remain subject to those terms.
+- Official terms: https://docs.nvidia.com/cuda/archive/12.1.1/eula/index.html and https://docs.nvidia.com/deeplearning/cudnn/backend/v9.8.0/reference/eula.html . The original wheel license is also retained unchanged alongside the versioned cuDNN agreement.
+- The CUDA engine archive is preserved in full. Twelve NVIDIA runtime DLLs are selected without modifying their bytes or GPU architecture data; the unused legacy cuDNN Adv and nvBLAS wrappers are omitted. Source/API evidence and isolated 9/13/19-board inference checks with both bundled models are documented in `cuda-licenses/DEPLOYMENT.md`.
+- KataGo's MIT license, original dependency notices, vendored cuDNN frontend MIT license and CUTLASS license accompany the package. See [CUDA notice index](cuda-licenses/README.md) for file-by-file sources and conditions. The CUDA and OpenCL engines share the original model files and model licenses below.
 
 ## GPU package: KataGo 1.18.1 OpenCL
 
