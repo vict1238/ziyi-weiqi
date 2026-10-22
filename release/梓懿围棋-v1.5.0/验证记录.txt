@@ -1,0 +1,23 @@
+﻿梓懿围棋 1.5 验证记录
+验证日期：2026-10-22
+
+构建：PowerShell 7，.NET Framework 4.8 x64，build.ps1 -Checks。
+规则与SGF：514；搜索预算：47；坐标：1323；引擎配置：83；模型目录：24；声音：17。
+以上共2008项断言全部PASS，未写用户偏好。
+
+双向让子：9/13/19路，双方0/1/2/9子，初始颜色/数量/星位、先行方、SGF AB/AW/PL/HA、首手合法性、悔棋导航、规则与贴目往返。
+无效参数不会改变原棋局、历史、规则、贴目或元数据。
+
+实际桌面UI：--ui-test qa/ui-test.txt，PASS。
+新增134项让子界面断言：设置草稿/取消/确认、新局生效、双向0/1/2子、先行颜色、SGF保存重载、双方真实CPU AI自动首手；检查结束恢复原测试状态。
+其余UI检查包括棋盘点击、引擎设置、音量、推荐、领地、悔棋、自弈、SGF导航、最小窗口、大预算/持续思考及停止取消，全部PASS。
+目视确认desktop-handicap-settings.png和desktop-handicap-white.png，未见控件重叠或文字裁切。
+
+实际CPU：--engine-test qa/engine-test.txt，PASS。
+实际CUDA：--cuda-test qa/cuda-test.txt，RTX 4060 Laptop 8GB、原最强tf3模型，PASS。
+两条引擎路径均验证19路361点ownership与合法落子、9路白获2子后黑AI首手、黑获1子天元后白AI首手、81点ownership有效值、取消后复用、大预算进度及持续思考停止。
+本次未重新计时CUDA/OpenCL性能差距；README保留的是v1.4.0的36次测量。
+OpenCL和CUDA运行库及GPU模型与v1.4.0相同，本次修改主程序让子功能。
+
+本记录对应v1.5.0正式发布程序。GPU升级继续使用v1.4.0完整基础包的运行库与模型。
+联机部分提供实现方案，当前程序仍用于本地对弈和复盘。

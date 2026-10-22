@@ -7,5 +7,6 @@ release/*/gpu/
 release/*/cuda/
 梓懿围棋-Windows-GPU-*.zip
 梓懿围棋-Windows-CUDA-*.zip
+梓懿围棋-Windows-Update-*.zip
 release/**/*.exe
 梓懿围棋-源码-*.zip

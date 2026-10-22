@@ -11,8 +11,10 @@ namespace GoDesk
     internal static class UiSmoke
     {
         private const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+        private static int assertionCount;
         public static async Task<string> RunAsync(MainForm form, string outputFolder)
         {
+            assertionCount = 0;
             Directory.CreateDirectory(outputFolder);
             var report = new StringBuilder();
             Check(form.Text == "梓懿围棋 · KataGo", "Application title was not renamed");
@@ -64,6 +66,8 @@ namespace GoDesk
             report.AppendLine("Engine/model settings cancel + validation + profile swap keep game and user preferences: PASS");
             CheckStoneVolumeSettings(form, outputFolder);
             report.AppendLine("Stone volume dialog draft/cancel/confirm; checks stay muted and do not save preferences: PASS");
+            int handicapChecks = await CheckHandicapGames(form, outputFolder);
+            report.AppendLine("Bidirectional handicap settings draft/cancel/confirm, New Game, 0/1/2 stones, SGF save/load and both real AI first replies: PASS (" + handicapChecks + " assertions)");
 
             Button hints = (Button)form.Controls.Find("BestHints", true)[0];
             hints.PerformClick(); await WaitIdle(form);
@@ -169,7 +173,7 @@ namespace GoDesk
                 ((TextBox)dialog.Controls.Find("CustomVisits", true)[0]).Text = countText;
                 ((CheckBox)dialog.Controls.Find("ContinuousDepth", true)[0]).Checked = continuousValue;
                 dialog.PerformLayout();
-                using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
+                if (screenshot != null) using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
                 {
                     dialog.DrawToBitmap(bitmap, new Rectangle(Point.Empty, dialog.Size));
                     bitmap.Save(screenshot, System.Drawing.Imaging.ImageFormat.Png);
@@ -183,6 +187,214 @@ namespace GoDesk
                 Check(applied, "Custom depth dialog was not confirmed");
             }
             finally { timer.Dispose(); }
+        }
+
+        private static async Task<int> CheckHandicapGames(MainForm form, string outputFolder)
+        {
+            int startedAssertions = assertionCount;
+            string originalSgf = form.CurrentGame.ToSgf();
+            int originalPosition = form.CurrentGame.Position;
+            int originalHandicap = (int)Field(form, "handicap");
+            Stone originalRecipient = (Stone)Field(form, "handicapColor");
+            double originalKomi = (double)Field(form, "komi");
+            string originalRules = (string)Field(form, "rules");
+            var human = (ComboBox)form.Controls.Find("HumanColor", true)[0];
+            var automatic = (CheckBox)form.Controls.Find("AutomaticReply", true)[0];
+            var size = (ComboBox)form.Controls.Find("BoardSize", true)[0];
+            var depth = (ComboBox)form.Controls.Find("SearchLevel", true)[0];
+            int originalHuman = human.SelectedIndex, originalSize = size.SelectedIndex;
+            int originalDepth = (int)Field(form, "selectedDepthIndex");
+            long originalCustomVisits = (long)Field(form, "customVisits");
+            bool originalContinuous = (bool)Field(form, "continuousDepth"), originalAutomatic = automatic.Checked;
+            object originalCustomLabel = depth.Items[SearchDepth.CustomIndex];
+            automatic.Checked = false;
+            human.SelectedIndex = 2;
+            try
+            {
+                EditHandicapSettings(form, 1, 9, 0.5m, 1, false, null);
+                Check((int)Field(form, "handicap") == originalHandicap && (Stone)Field(form, "handicapColor") == originalRecipient,
+                    "Cancel changed the pending handicap direction/count");
+                Check((double)Field(form, "komi") == originalKomi && (string)Field(form, "rules") == originalRules,
+                    "Cancel changed pending komi/rules");
+                Check(form.CurrentGame.ToSgf() == originalSgf && form.CurrentGame.Position == originalPosition,
+                    "Cancel reset or altered the active game");
+
+                EditHandicapSettings(form, 1, 2, 6.5m, 1, true, Path.Combine(outputFolder, "desktop-handicap-settings.png"));
+                Check((int)Field(form, "handicap") == 2 && (Stone)Field(form, "handicapColor") == Stone.White &&
+                    (double)Field(form, "komi") == 6.5 && (string)Field(form, "rules") == "japanese",
+                    "Confirmation failed to save pending White handicap, komi and rules");
+                Check(form.CurrentGame.ToSgf() == originalSgf && form.CurrentGame.Position == originalPosition,
+                    "Confirming next-game settings immediately reset the active game");
+                EditHandicapSettings(form, 0, 7, -3.5m, 0, false, null);
+                Check((int)Field(form, "handicap") == 2 && (Stone)Field(form, "handicapColor") == Stone.White &&
+                    (double)Field(form, "komi") == 6.5 && (string)Field(form, "rules") == "japanese",
+                    "Cancel lost the previously confirmed pending settings");
+                Check(form.CurrentGame.ToSgf() == originalSgf, "A second canceled draft altered the active game");
+
+                size.SelectedIndex = 2;
+                ((Button)form.Controls.Find("NewGame", true)[0]).PerformClick();
+                CheckHandicapInitial(form, 2, Stone.White, Stone.Black);
+                Check(form.CurrentGame.Size == 9 && form.CurrentGame.Komi == 6.5 && form.CurrentGame.Rules == "japanese",
+                    "New Game did not apply pending board size, komi and rules");
+                Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains("黑让白 2 子") &&
+                    ((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains("黑方先行"), "White setup status omits direction or first player");
+                form.CaptureScreenshot(Path.Combine(outputFolder, "desktop-handicap-white.png"));
+                CheckHandicapRoundTrip(form, outputFolder, "让白初始局面.sgf", 2, Stone.White, Stone.Black, 0);
+
+                // Use the real custom-depth dialog to keep these two additional
+                // native CPU replies quick; the ordinary 256-preset check above stays intact.
+                ConfigureDepth(form, "8", false, null);
+                human.SelectedIndex = 1;
+                automatic.Checked = true;
+                await WaitIdle(form);
+                Check(form.CurrentGame.Position == 1 && form.CurrentGame.Moves[0].Color == Stone.Black && form.CurrentGame.ToPlay == Stone.White,
+                    "Human receiving White handicap did not make Black AI take the first actual turn");
+                Check(form.CurrentGame.InitialStones.Count == 2 && form.CurrentGame.InitialPlayer == Stone.Black,
+                    "Black AI reply lost the original White setup");
+                CheckHandicapRoundTrip(form, outputFolder, "让白AI首手.sgf", 2, Stone.White, Stone.Black, 1);
+
+                automatic.Checked = false;
+                human.SelectedIndex = 0;
+                EditHandicapSettings(form, 0, 2, 0.5m, 0, true, null);
+                ((Button)form.Controls.Find("NewGame", true)[0]).PerformClick();
+                CheckHandicapInitial(form, 2, Stone.Black, Stone.White);
+                Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains("白让黑 2 子") &&
+                    ((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains("白方先行"), "Black setup status omits direction or first player");
+                automatic.Checked = true;
+                await WaitIdle(form);
+                Check(form.CurrentGame.Position == 1 && form.CurrentGame.Moves[0].Color == Stone.White && form.CurrentGame.ToPlay == Stone.Black,
+                    "Human receiving Black handicap did not make White AI take the first actual turn");
+                Check(form.CurrentGame.InitialStones.Count == 2 && form.CurrentGame.InitialPlayer == Stone.White,
+                    "White AI reply lost the original Black setup");
+                CheckHandicapRoundTrip(form, outputFolder, "让黑AI首手.sgf", 2, Stone.Black, Stone.White, 1);
+
+                automatic.Checked = false;
+                human.SelectedIndex = 2;
+                for (int direction = 0; direction < 2; direction++)
+                {
+                    Stone recipient = direction == 0 ? Stone.Black : Stone.White;
+                    Stone firstPlayer = GoGame.Opponent(recipient);
+                    EditHandicapSettings(form, direction, 1, 0.5m, 0, true, null);
+                    ((Button)form.Controls.Find("NewGame", true)[0]).PerformClick();
+                    CheckHandicapInitial(form, 1, recipient, firstPlayer);
+                    Check(form.CurrentGame.Board[4, 4] == recipient, "One-stone handicap was not placed at tengen");
+                    Check(!form.CurrentGame.ToSgf().Contains("HA["), "One-stone setup incorrectly exported conventional HA");
+                    CheckHandicapRoundTrip(form, outputFolder, direction == 0 ? "黑一子天元.sgf" : "白一子天元.sgf", 1, recipient, firstPlayer, 0);
+
+                    EditHandicapSettings(form, direction, 0, 7.5m, 0, true, null);
+                    ((Button)form.Controls.Find("NewGame", true)[0]).PerformClick();
+                    CheckHandicapInitial(form, 0, recipient, Stone.Black);
+                    Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains("分先，黑方先行"), "Zero-stone status did not show an even game with Black first");
+                    CheckHandicapRoundTrip(form, outputFolder, direction == 0 ? "分先黑方向.sgf" : "分先白方向.sgf", 0, recipient, Stone.Black, 0);
+                }
+            }
+            finally
+            {
+                automatic.Checked = false;
+                GoGame restored = GoGame.FromSgf(originalSgf);
+                restored.Goto(originalPosition);
+                form.LoadGame(restored);
+                SetField(form, "updating", true);
+                try
+                {
+                    SetField(form, "handicap", originalHandicap);
+                    SetField(form, "handicapColor", originalRecipient);
+                    SetField(form, "komi", originalKomi);
+                    SetField(form, "rules", originalRules);
+                    SetField(form, "customVisits", originalCustomVisits);
+                    SetField(form, "continuousDepth", originalContinuous);
+                    SetField(form, "selectedDepthIndex", originalDepth);
+                    depth.Items[SearchDepth.CustomIndex] = originalCustomLabel;
+                    depth.SelectedIndex = originalDepth;
+                    size.SelectedIndex = originalSize;
+                    human.SelectedIndex = originalHuman;
+                    automatic.Checked = originalAutomatic;
+                }
+                finally { SetField(form, "updating", false); }
+                Call(form, "UpdateUi");
+            }
+            Check(form.CurrentGame.ToSgf() == originalSgf && form.CurrentGame.Position == originalPosition &&
+                (int)Field(form, "handicap") == originalHandicap && (Stone)Field(form, "handicapColor") == originalRecipient &&
+                CurrentVisits(form) == SearchDepth.PresetVisits(originalDepth), "Handicap checks leaked pending/current state into other UI checks");
+            return assertionCount - startedAssertions;
+        }
+
+        private static void EditHandicapSettings(MainForm form, int direction, int count, decimal komi, int rule, bool accept, string screenshot)
+        {
+            Exception failure = null;
+            using (var timer = new System.Windows.Forms.Timer { Interval = 100 })
+            {
+                timer.Tick += delegate
+                {
+                    Form dialog = null;
+                    foreach (Form candidate in Application.OpenForms) if (candidate.Name == "GameSettings") dialog = candidate;
+                    if (dialog == null) return;
+                    timer.Stop();
+                    try
+                    {
+                        var directions = (ComboBox)dialog.Controls.Find("HandicapDirection", true)[0];
+                        var stones = (NumericUpDown)dialog.Controls.Find("HandicapCount", true)[0];
+                        Check(directions.Items.Count == 2 && directions.Items[0].ToString().Contains("白让黑") && directions.Items[1].ToString().Contains("黑让白"),
+                            "Handicap direction choices do not identify both recipients");
+                        Check(stones.Minimum == 0 && stones.Maximum == 9, "Handicap numeric range must include 0, 1 and 9");
+                        directions.SelectedIndex = direction;
+                        stones.Value = count;
+                        ((NumericUpDown)dialog.Controls.Find("KomiInput", true)[0]).Value = komi;
+                        ((ComboBox)dialog.Controls.Find("GameRule", true)[0]).SelectedIndex = rule;
+                        string preview = ((Label)dialog.Controls.Find("HandicapPreview", true)[0]).Text;
+                        Check(count == 0 ? preview.Contains("分先") && preview.Contains("黑方先行") :
+                            preview.Contains(direction == 0 ? "黑棋先摆 " + count : "白棋先摆 " + count) && preview.Contains(direction == 0 ? "白方先行" : "黑方先行"),
+                            "Live handicap explanation disagrees with direction/count");
+                        Check(count != 1 || preview.Contains("天元"), "One-stone preview does not explain tengen");
+                        Check(preview.Contains("贴目仍归白方") && preview.Contains("下一局"), "Handicap preview omits komi or next-game behavior");
+                        if (screenshot != null)
+                        {
+                            dialog.PerformLayout();
+                            using (var bitmap = new Bitmap(dialog.Width, dialog.Height))
+                            {
+                                dialog.DrawToBitmap(bitmap, new Rectangle(Point.Empty, dialog.Size));
+                                bitmap.Save(screenshot, System.Drawing.Imaging.ImageFormat.Png);
+                            }
+                        }
+                        ((Button)dialog.Controls.Find(accept ? "GameSettingsOk" : "GameSettingsCancel", true)[0]).PerformClick();
+                    }
+                    catch (Exception error) { failure = error; dialog.DialogResult = DialogResult.Cancel; }
+                };
+                timer.Start();
+                Call(form, "GameSettings");
+            }
+            if (failure != null) throw new InvalidOperationException("Handicap settings automation failed", failure);
+        }
+
+        private static void CheckHandicapInitial(MainForm form, int count, Stone recipient, Stone firstPlayer)
+        {
+            GoGame game = form.CurrentGame;
+            Check(game.Position == 0 && game.Moves.Count == 0 && game.InitialStones.Count == count, "New Game counted setup stones as turns or kept old moves");
+            Check(game.InitialPlayer == firstPlayer && game.ToPlay == firstPlayer, "New Game starts with the wrong color for its handicap direction");
+            foreach (Move stone in game.InitialStones)
+                Check(stone.Color == recipient && game.Board[stone.X, stone.Y] == recipient, "Handicap setup has the wrong stone color");
+            int occupied = 0;
+            foreach (Stone stone in game.Board) if (stone != Stone.Empty) occupied++;
+            Check(occupied == count, "Initial handicap board contains extra or missing stones");
+            Check(((Label)Field(form, "turnLabel")).Text.Contains(firstPlayer == Stone.Black ? "黑方行棋" : "白方行棋"),
+                "Turn indicator does not identify the first actual player");
+            Check(((Label)Field(form, "moveLabel")).Text == "第 0 / 0 手", "Move counter counts handicap setup as played moves");
+        }
+
+        private static void CheckHandicapRoundTrip(MainForm form, string outputFolder, string filename, int count, Stone recipient, Stone firstPlayer, int played)
+        {
+            string before = form.CurrentGame.ToSgf();
+            string path = Path.Combine(outputFolder, filename);
+            File.WriteAllText(path, before, new UTF8Encoding(false));
+            GoGame loaded = GoGame.FromSgf(File.ReadAllText(path, Encoding.UTF8));
+            Check(loaded.InitialStones.Count == count && loaded.InitialPlayer == firstPlayer && loaded.Position == played,
+                "Saved handicap SGF lost setup, initial player or played moves");
+            foreach (Move stone in loaded.InitialStones) Check(stone.Color == recipient && loaded.Board[stone.X, stone.Y] == recipient, "SGF reload changed setup color or placement");
+            Check(played == 0 || loaded.Moves[0].Color == firstPlayer, "SGF reload changed the color of the first actual move");
+            form.LoadGame(loaded);
+            Check(form.CurrentGame.ToSgf() == before, "Saving and loading a handicap game changed its SGF");
+            Check((int)Field(form, "handicap") == 0 && (Stone)Field(form, "handicapColor") == Stone.Black,
+                "Imported setup incorrectly became pending New Game handicap settings");
         }
 
         private static void CheckStoneVolumeSettings(MainForm form, string outputFolder)
@@ -404,12 +616,17 @@ namespace GoDesk
         {
             return instance.GetType().GetField(name, PrivateInstance).GetValue(instance);
         }
+        private static void SetField(object instance, string name, object value)
+        {
+            instance.GetType().GetField(name, PrivateInstance).SetValue(instance, value);
+        }
         private static object Call(MainForm form, string method, params object[] args)
         {
             return typeof(MainForm).GetMethod(method, PrivateInstance).Invoke(form, args);
         }
         private static void Check(bool condition, string message)
         {
+            assertionCount++;
             if (!condition) throw new InvalidOperationException(message);
         }
     }

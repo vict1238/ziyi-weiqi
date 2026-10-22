@@ -16,6 +16,8 @@ namespace GoDesk
             TestRulesAndKomi();
             TestHistoryAndPasses();
             TestHandicap();
+            TestBidirectionalHandicap();
+            TestHandicapResetAtomicity();
             TestSgf();
             TestFoxSgfKomi();
             return "围棋规则与 SGF 测试通过：" + checks + " 项断言。";
@@ -236,6 +238,161 @@ namespace GoDesk
                     GoGame roundTrip = GoGame.FromSgf(game.ToSgf());
                     Check(roundTrip.InitialPlayer == Stone.White && roundTrip.InitialStones.Count == handicap, "让子 SGF 往返");
                 }
+        }
+
+        private static bool SameBoard(Stone[,] first, Stone[,] second)
+        {
+            if (first.GetLength(0) != second.GetLength(0) || first.GetLength(1) != second.GetLength(1)) return false;
+            for (int x = 0; x < first.GetLength(0); x++)
+                for (int y = 0; y < first.GetLength(1); y++)
+                    if (first[x, y] != second[x, y]) return false;
+            return true;
+        }
+
+        private static void TestBidirectionalHandicap()
+        {
+            foreach (int size in new int[] { 9, 13, 19 })
+                foreach (Stone recipient in new Stone[] { Stone.Black, Stone.White })
+                {
+                    GoGame even = new GoGame();
+                    even.NewGame(size, 7.5, 0, recipient);
+                    Check(even.InitialStones.Count == 0 && even.InitialPlayer == Stone.Black && even.ToPlay == Stone.Black,
+                        "零让子始终分先、黑棋先行，与方向无关");
+                    string evenSgf = even.ToSgf();
+                    Check(!evenSgf.Contains("AB[") && !evenSgf.Contains("AW[") && !evenSgf.Contains("HA[") && evenSgf.Contains("PL[B]"),
+                        "分先棋谱不携带摆子或让子属性");
+                    foreach (int handicap in new int[] { 1, 2, 9 })
+                    {
+                        string label = size + "路、" + recipient + "获得" + handicap + "子";
+                        double newKomi = recipient == Stone.White ? -6.5 : 0.5;
+                        GoGame game = new GoGame();
+                        game.NewGame(size, newKomi, handicap, recipient);
+                        Stone first = GoGame.Opponent(recipient);
+                        int recipientCount = 0, otherCount = 0;
+                        for (int x = 0; x < size; x++)
+                            for (int y = 0; y < size; y++)
+                            {
+                                if (game.Board[x, y] == recipient) recipientCount++;
+                                if (game.Board[x, y] == first) otherCount++;
+                            }
+                        Check(recipientCount == handicap && otherCount == 0 && game.InitialStones.Count == handicap,
+                            "仅获得让子的一方先摆指定数量：" + label);
+                        Check(game.InitialPlayer == first && game.ToPlay == first && game.Position == 0 && game.Moves.Count == 0,
+                            "摆子不计手数，由另一方先行：" + label);
+                        bool allSetupCorrect = true;
+                        foreach (Move stone in game.InitialStones)
+                            if (stone.Color != recipient || game.Board[stone.X, stone.Y] != recipient) allSetupCorrect = false;
+                        Check(allSetupCorrect && game.BlackCaptures == 0 && game.WhiteCaptures == 0,
+                            "初始摆子颜色正确且没有提子：" + label);
+                        Check(game.Komi == newKomi && game.Rules == "chinese-ogs", "让子不擅自改变输入贴目或默认规则：" + label);
+
+                        int middle = size / 2;
+                        int near = size == 9 ? 2 : 3;
+                        int far = size - 1 - near;
+                        if (handicap == 1)
+                            Check(game.Board[middle, middle] == recipient, "单子位于天元：" + label);
+                        else if (handicap == 2)
+                            Check(game.Board[far, near] == recipient && game.Board[near, far] == recipient,
+                                "两子位于原标准对角星位：" + label);
+                        else
+                        {
+                            bool starsOccupied = true;
+                            foreach (int x in new int[] { near, middle, far })
+                                foreach (int y in new int[] { near, middle, far })
+                                    if (game.Board[x, y] != recipient) starsOccupied = false;
+                            Check(starsOccupied, "九子覆盖全部九个星位：" + label);
+                        }
+
+                        string sgf = game.ToSgf();
+                        string setupProperty = recipient == Stone.Black ? "AB[" : "AW[";
+                        string otherSetup = recipient == Stone.Black ? "AW[" : "AB[";
+                        Check(sgf.Contains(setupProperty) && !sgf.Contains(otherSetup) &&
+                            sgf.Contains(first == Stone.Black ? "PL[B]" : "PL[W]"), "SGF摆子与初始行棋方明确：" + label);
+                        Check(handicap >= 2 && recipient == Stone.Black ? sgf.Contains("HA[" + handicap + "]") : !sgf.Contains("HA["),
+                            "HA仅用于黑棋获得两子及以上，白棋获得让子用AW和PL：" + label);
+                        GoGame setupRoundTrip = GoGame.FromSgf(sgf);
+                        Check(setupRoundTrip.InitialPlayer == first && setupRoundTrip.InitialStones.Count == handicap &&
+                            setupRoundTrip.Komi == newKomi && SameBoard(game.Board, setupRoundTrip.Board), "未落子的双向让子SGF往返：" + label);
+
+                        Stone[,] setupBoard = (Stone[,])game.Board.Clone();
+                        string error;
+                        Check(!game.TryPlayMove(new Move(0, 0, recipient), out error) && game.Position == 0 && SameBoard(setupBoard, game.Board),
+                            "获得让子者不能抢先下第一手：" + label);
+                        game.Rules = "Japanese";
+                        Play(game, 0, 0);
+                        Check(game.Moves[0].Color == first && game.Board[0, 0] == first && game.ToPlay == recipient,
+                            "实际第一手执色正确：" + label);
+                        Check(game.InitialStones.Count == handicap && setupBoard[0, 0] == Stone.Empty,
+                            "实际落子不混入初始摆子：" + label);
+                        Play(game, 1, 0);
+                        game.Undo();
+                        Check(game.Position == 1 && game.ToPlay == recipient && game.Board[1, 0] == Stone.Empty && game.Board[0, 0] == first,
+                            "双向让子悔棋恢复棋盘和执色：" + label);
+                        game.Goto(0);
+                        Check(game.ToPlay == first && game.Moves.Count == 2 && SameBoard(setupBoard, game.Board),
+                            "回到起点保留摆子、首行方与完整后续：" + label);
+                        GoGame playedRoundTrip = GoGame.FromSgf(game.ToSgf());
+                        Check(playedRoundTrip.Position == 2 && playedRoundTrip.InitialPlayer == first &&
+                            playedRoundTrip.Moves[0].Color == first && playedRoundTrip.Rules == "japanese" && playedRoundTrip.Komi == newKomi,
+                            "导航中导出完整双向对局并保留规则贴目：" + label);
+                        game.Goto(2);
+                        Check(SameBoard(game.Board, playedRoundTrip.Board) && game.ToPlay == playedRoundTrip.ToPlay,
+                            "双向让子棋谱往返保持最终棋盘和轮次：" + label);
+                        playedRoundTrip.Goto(0);
+                        Check(SameBoard(setupBoard, playedRoundTrip.Board) && playedRoundTrip.ToPlay == first,
+                            "往返后导航回起点仍保留正确摆子：" + label);
+                    }
+                }
+
+            GoGame compatibility = new GoGame();
+            GoGame explicitBlack = new GoGame();
+            compatibility.NewGame(19, 0.5, 9);
+            explicitBlack.NewGame(19, 0.5, 9, Stone.Black);
+            Check(compatibility.ToSgf() == explicitBlack.ToSgf(), "三参数NewGame保持黑棋获得让子的旧接口语义");
+            GoGame explicitPl = GoGame.FromSgf("(;SZ[9]HA[2]AB[cc][gg]PL[B];B[aa])");
+            Check(explicitPl.InitialPlayer == Stone.Black && explicitPl.Moves[0].Color == Stone.Black,
+                "SGF明确PL优先于默认黑棋让子行棋推断");
+            GoGame whiteSetup = GoGame.FromSgf("(;SZ[9]AW[cc][gg]PL[B];B[aa])");
+            Check(whiteSetup.InitialPlayer == Stone.Black && whiteSetup.InitialStones.Count == 2 && !whiteSetup.ToSgf().Contains("HA["),
+                "外部白棋摆子SGF保持黑先且不生成HA");
+        }
+
+        private static void TestHandicapResetAtomicity()
+        {
+            GoGame game = GoGame.FromSgf("(;SZ[19]AP[foxwq]KM[375]RU[Japanese]PB[黑方]PW[白方]C[保留元数据]AB[dd]AW[pp]PL[W];W[jj];B[aa])");
+            game.Goto(1);
+            string before = game.ToSgf();
+            string importNotice = game.ImportNotice;
+            Stone[,] board = (Stone[,])game.Board.Clone();
+            Action[] invalidResets = new Action[] {
+                () => game.NewGame(1, 0.5, 2, Stone.Black),
+                () => game.NewGame(26, 0.5, 2, Stone.White),
+                () => game.NewGame(6, 0.5, 1, Stone.White),
+                () => game.NewGame(13, 0.5, -1, Stone.Black),
+                () => game.NewGame(13, 0.5, 10, Stone.White),
+                () => game.NewGame(13, 0.5, 2, Stone.Empty),
+                () => game.NewGame(13, 0.5, 0, (Stone)3),
+                () => game.NewGame(13, Double.NaN, 2, Stone.White),
+                () => game.NewGame(13, Double.PositiveInfinity, 2, Stone.Black),
+                () => game.NewGame(13, 6.25, 2, Stone.White),
+                () => game.NewGame(13, 150.5, 2, Stone.Black)
+            };
+            foreach (Action reset in invalidResets)
+            {
+                bool rejected = false;
+                try { reset(); } catch (ArgumentException) { rejected = true; }
+                Check(rejected, "双向让子无效参数被拒绝");
+                Check(game.Position == 1 && game.Size == 19 && game.Moves.Count == 2 && game.ToPlay == Stone.Black &&
+                    game.InitialStones.Count == 2 && game.Rules == "japanese" && game.Komi == 7.5 &&
+                    game.ImportNotice == importNotice && SameBoard(board, game.Board) && game.ToSgf() == before,
+                    "无效重开请求原子保留棋盘、导航、完整棋谱、贴目、规则与导入元数据");
+            }
+            game.NewGame(13, -0.5, 2, Stone.White);
+            Check(game.Size == 13 && game.Komi == -0.5 && game.Rules == "chinese-ogs" && game.Position == 0 && game.Moves.Count == 0 &&
+                game.InitialStones.Count == 2 && game.ToPlay == Stone.Black && String.IsNullOrEmpty(game.ImportNotice),
+                "有效白方受让新局重置旧历史、规则与导入提示");
+            Check(!game.ToSgf().Contains("PB[") && !game.ToSgf().Contains("PW[") && !game.ToSgf().Contains("保留元数据"),
+                "新对局清除旧棋谱人物与评论元数据");
         }
 
         private static void TestSgf()

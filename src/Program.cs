@@ -109,6 +109,34 @@ namespace GoDesk
                 Assert(handicap.TryPlayMove(GoGame.ParseGtp(setup.BestMove, handicap.ToPlay, handicap.Size), out error), "Setup game AI move: " + error);
                 report.AppendLine("9x9 SGF setup stones + initial player + legal move: " + setup.BestMove);
 
+                var whiteSetup = new GoGame(9, 0.5);
+                whiteSetup.NewGame(9, 0.5, 2, Stone.White);
+                string whiteSetupSgf = whiteSetup.ToSgf();
+                Assert(whiteSetupSgf.Contains("AW[") && whiteSetupSgf.Contains("PL[B]") && !whiteSetupSgf.Contains("HA["),
+                    "White handicap SGF must contain AW + PL[B], without conventional Black HA");
+                whiteSetup = GoGame.FromSgf(whiteSetupSgf);
+                AssertInitialSetup(whiteSetup, 2, Stone.White, Stone.Black);
+                var whiteSetupAnalysis = await engine.AnalyzeAsync(whiteSetup, 8, true);
+                CheckAnalysis(whiteSetupAnalysis, 81);
+                Assert(whiteSetup.TryPlayMove(GoGame.ParseGtp(whiteSetupAnalysis.BestMove, Stone.Black, 9), out error),
+                    "Black AI returned an illegal move against initial White setup: " + error);
+                Assert(whiteSetup.Position == 1 && whiteSetup.Moves[0].Color == Stone.Black && whiteSetup.ToPlay == Stone.White,
+                    "White setup must be followed by the first actual Black move");
+                report.AppendLine("9x9 White setup: initialStones=W x2, initialPlayer=B, AW + PL[B], 81 valid ownership values, legal Black first move: " + whiteSetupAnalysis.BestMove);
+
+                var blackSingle = new GoGame(9, 0.5);
+                blackSingle.NewGame(9, 0.5, 1, Stone.Black);
+                blackSingle = GoGame.FromSgf(blackSingle.ToSgf());
+                AssertInitialSetup(blackSingle, 1, Stone.Black, Stone.White);
+                Assert(blackSingle.Board[4, 4] == Stone.Black, "Single Black handicap stone must occupy tengen");
+                var blackSingleAnalysis = await engine.AnalyzeAsync(blackSingle, 8, true);
+                CheckAnalysis(blackSingleAnalysis, 81);
+                Assert(blackSingle.TryPlayMove(GoGame.ParseGtp(blackSingleAnalysis.BestMove, Stone.White, 9), out error),
+                    "White AI returned an illegal move against single Black setup: " + error);
+                Assert(blackSingle.Position == 1 && blackSingle.Moves[0].Color == Stone.White && blackSingle.ToPlay == Stone.Black,
+                    "Single Black setup must be followed by the first actual White move");
+                report.AppendLine("9x9 single Black setup: initialStones=B x1 at tengen, initialPlayer=W, 81 valid ownership values, legal White first move: " + blackSingleAnalysis.BestMove);
+
                 Task<AnalysisResult> pending = engine.AnalyzeAsync(new GoGame(19, 7.5), 4096, false);
                 await Task.Delay(180);
                 engine.Cancel();
@@ -143,6 +171,15 @@ namespace GoDesk
             return report.ToString();
         }
 
+        private static void AssertInitialSetup(GoGame game, int count, Stone recipient, Stone firstPlayer)
+        {
+            Assert(game.InitialStones.Count == count && game.Position == 0 && game.Moves.Count == 0,
+                "Initial handicap stones were lost or counted as played moves");
+            Assert(game.InitialPlayer == firstPlayer && game.ToPlay == firstPlayer, "Wrong initial player for handicap direction");
+            foreach (Move stone in game.InitialStones)
+                Assert(stone.Color == recipient && game.Board[stone.X, stone.Y] == recipient, "Initial setup color differs from its board stone");
+        }
+
         private static void CheckAnalysis(AnalysisResult result, int ownershipSize)
         {
             Assert(result != null, "Missing analysis");
@@ -152,7 +189,12 @@ namespace GoDesk
             Assert(result.Visits > 0, "No search visits");
             Assert(result.Candidates != null && result.Candidates.Count > 0, "Missing candidates");
             if (ownershipSize > 0)
+            {
                 Assert(result.Ownership != null && result.Ownership.Length == ownershipSize, "Wrong ownership map length");
+                foreach (double ownership in result.Ownership)
+                    Assert(!double.IsNaN(ownership) && !double.IsInfinity(ownership) && ownership >= -1.000001 && ownership <= 1.000001,
+                        "Invalid ownership value");
+            }
         }
 
         private static void Assert(bool condition, string message)

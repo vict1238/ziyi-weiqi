@@ -33,6 +33,7 @@ namespace GoDesk
         private Panel evaluationBar;
         private bool thinking, closing, updating;
         private int generation, handicap;
+        private Stone handicapColor = Stone.Black;
         private int selfPlaySession;
         private bool selfPlaying;
         private bool stopping, analysisWillPlay, continuousDepth;
@@ -91,7 +92,7 @@ namespace GoDesk
             help.DropDownItems.Add("使用说明", null, delegate { ShowHelp(); });
             help.DropDownItems.Add("引擎 / 模型设置…", null, delegate { ShowEngineSettings(this); });
             help.DropDownItems.Add("第三方许可", null, delegate { Program.ShowLicenses(this); });
-            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.4\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nNVIDIA 显卡可使用 CUDA 加速，设置中可选择 CUDA、OpenCL 或 CPU。\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），保留旧模型与本地模型选择。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
+            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.5\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nNVIDIA 显卡可使用 CUDA 加速，设置中可选择 CUDA、OpenCL 或 CPU。\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），保留旧模型与本地模型选择。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持双向 0–9 子让子与 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
             menu.Items.Add(file); menu.Items.Add(help); MainMenuStrip = menu;
 
             Panel header = new Panel { Dock = DockStyle.Top, Height = 66, Padding = new Padding(26, 9, 24, 8), BackColor = Color.FromArgb(250, 249, 246) };
@@ -105,7 +106,7 @@ namespace GoDesk
             Panel left = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 0, 14, 0) };
             Panel boardHeader = new Panel { Dock = DockStyle.Top, Height = 34, Padding = new Padding(13, 0, 12, 0) };
             turnLabel = new Label { Dock = DockStyle.Left, Width = 210, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
-            gameInfoLabel = new Label { Dock = DockStyle.Right, Width = 220, TextAlign = ContentAlignment.MiddleRight, ForeColor = muted };
+            gameInfoLabel = new Label { Name = "GameInfo", Dock = DockStyle.Right, Width = 350, TextAlign = ContentAlignment.MiddleRight, ForeColor = muted };
             boardHeader.Controls.Add(turnLabel); boardHeader.Controls.Add(gameInfoLabel);
             Panel footer = new Panel { Dock = DockStyle.Bottom, Height = 76, Padding = new Padding(12, 5, 12, 0) };
             FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 37, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
@@ -414,14 +415,17 @@ namespace GoDesk
         private void NewGame()
         {
             CancelAnalysis(); int size = sizeBox.SelectedIndex == 1 ? 13 : sizeBox.SelectedIndex == 2 ? 9 : 19;
-            game.NewGame(size, komi, handicap); game.Rules = rules; ClearAnalysis(); board.Game = game; UpdateUi();
-            SetStatus("新对局已开始。" + (handicap > 0 ? "让 " + handicap + " 子，白方先行。" : "黑方先行。")); MaybeAutoMove();
+            game.NewGame(size, komi, handicap, handicapColor); game.Rules = rules; ClearAnalysis(); board.Game = game; UpdateUi();
+            SetStatus("新对局已开始。" + (handicap > 0
+                ? (handicapColor == Stone.Black ? "白让黑 " : "黑让白 ") + handicap + " 子，" +
+                    (handicapColor == Stone.Black ? "黑棋先摆，白方先行。" : "白棋先摆，黑方先行。")
+                : "分先，黑方先行。")); MaybeAutoMove();
         }
         public void LoadGame(GoGame value)
         {
             if (value == null) throw new ArgumentNullException("value");
             if (value.Size != 9 && value.Size != 13 && value.Size != 19) throw new ArgumentException("桌面版支持 9 路、13 路和 19 路棋谱。");
-            CancelAnalysis(); game = value; komi = game.Komi; rules = game.Rules; handicap = 0;
+            CancelAnalysis(); game = value; komi = game.Komi; rules = game.Rules; handicap = 0; handicapColor = Stone.Black;
             updating = true; sizeBox.SelectedIndex = game.Size == 13 ? 1 : game.Size == 9 ? 2 : 0; humanBox.SelectedIndex = 2; updating = false;
             ClearAnalysis(); board.Game = game; UpdateUi(); SetStatus((String.IsNullOrEmpty(game.ImportNotice) ? "" : game.ImportNotice + " ") + "棋谱已载入。用方向键复盘，或点击棋盘继续。");
         }
@@ -534,6 +538,12 @@ namespace GoDesk
             if (board == null) return;
             turnLabel.Text = game.IsOver ? "对局结束 · 连续停着" : (game.ToPlay == Stone.Black ? "●  黑方行棋" : "○  白方行棋") + (thinking ? "   /   思考中…" : "");
             gameInfoLabel.Text = game.Size + " 路  ·  " + (game.Rules == "japanese" ? "日本规则" : "中国规则") + "  ·  贴目 " + game.Komi.ToString("0.#", CultureInfo.InvariantCulture);
+            if (game.InitialStones.Count > 0)
+            {
+                Stone setupColor = game.InitialStones[0].Color;
+                foreach (Move stone in game.InitialStones) if (stone.Color != setupColor) { setupColor = Stone.Empty; break; }
+                gameInfoLabel.Text += "  ·  " + (setupColor == Stone.Black ? "黑预摆 " : setupColor == Stone.White ? "白预摆 " : "初始摆子 ") + game.InitialStones.Count + " 子";
+            }
             moveLabel.Text = "第 " + game.Position + " / " + game.Moves.Count + " 手";
             captureLabel.Text = "提子    黑 " + game.BlackCaptures + "    白 " + game.WhiteCaptures;
             if (game.Position < game.Moves.Count) captureLabel.Text += "    ·    当前处于复盘";
@@ -581,37 +591,47 @@ namespace GoDesk
         }
         private void GameSettings()
         {
-            using (Form dialog = new Form { Name = "GameSettings", Text = "设置", Width = 360, Height = 430, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, Font = Font, BackColor = BackColor })
+            using (Form dialog = new Form { Name = "GameSettings", Text = "规则 / 设置", Width = 450, Height = 540, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, Font = Font, BackColor = BackColor })
             {
                 Label k = new Label { Text = "贴目", Location = new Point(23, 24), Size = new Size(86, 26) };
-                NumericUpDown komiInput = new NumericUpDown { Location = new Point(117, 20), Width = 166, Minimum = -150, Maximum = 150, DecimalPlaces = 1, Increment = .5m, Value = (decimal)komi };
-                Label h = new Label { Text = "让子（黑）", Location = new Point(23, 68), Size = new Size(94, 26) };
-                NumericUpDown handicapInput = new NumericUpDown { Location = new Point(117, 64), Width = 166, Minimum = 0, Maximum = 9, Value = handicap };
-                Label ruleLabel = new Label { Text = "规则", Location = new Point(23, 111), Size = new Size(86, 26) };
-                ComboBox ruleInput = Combo(new string[] { "中国规则 · 数子", "日本规则 · 数目" }); ruleInput.Location = new Point(117, 107); ruleInput.Width = 166; ruleInput.SelectedIndex = rules == "japanese" ? 1 : 0;
-                Label depthLabel = new Label { Text = "计算深度", Location = new Point(23, 154), Size = new Size(86, 26) };
-                Button depthButton = MakeButton("设置计算深度…", 166, delegate { ShowDepthSettings(dialog); }); depthButton.Location = new Point(117, 148); depthButton.Height = 30;
-                Label volumeLabel = new Label { Text = "落子音量", Location = new Point(23, 195), Size = new Size(86, 27) };
-                TrackBar volumeInput = new TrackBar { Name = "StoneVolume", Location = new Point(108, 186), Size = new Size(181, 45), Minimum = 0, Maximum = 100, TickFrequency = 25, SmallChange = 5, LargeChange = 10, Value = stoneSound.Volume };
-                Label volumePercent = new Label { Name = "StoneVolumePercent", Text = volumeInput.Value + "%", Location = new Point(289, 195), Size = new Size(47, 27) };
+                NumericUpDown komiInput = new NumericUpDown { Name = "KomiInput", Location = new Point(117, 20), Width = 166, Minimum = -150, Maximum = 150, DecimalPlaces = 1, Increment = .5m, Value = (decimal)komi };
+                Label h = new Label { Text = "让子方向", Location = new Point(23, 68), Size = new Size(94, 26) };
+                ComboBox handicapDirection = Combo(new string[] { "白让黑（黑棋先摆）", "黑让白（白棋先摆）" }); handicapDirection.Name = "HandicapDirection"; handicapDirection.Location = new Point(117, 64); handicapDirection.Width = 286; handicapDirection.SelectedIndex = handicapColor == Stone.White ? 1 : 0;
+                Label countLabel = new Label { Text = "让子数量", Location = new Point(23, 111), Size = new Size(94, 26) };
+                NumericUpDown handicapInput = new NumericUpDown { Name = "HandicapCount", Location = new Point(117, 107), Width = 166, Minimum = 0, Maximum = 9, Value = handicap };
+                Label countHint = new Label { Text = "子（0 为分先）", Location = new Point(290, 111), Size = new Size(122, 26), ForeColor = muted };
+                Label handicapPreview = new Label { Name = "HandicapPreview", Location = new Point(23, 150), Size = new Size(389, 54), ForeColor = muted };
+                Action updateHandicapPreview = delegate {
+                    handicapPreview.Text = handicapInput.Value == 0 ? "分先，不预摆棋子，黑方先行。" :
+                        (handicapDirection.SelectedIndex == 0 ? "黑棋先摆 " : "白棋先摆 ") + handicapInput.Value + " 子，" +
+                        (handicapDirection.SelectedIndex == 0 ? "白方先行。" : "黑方先行。") + (handicapInput.Value == 1 ? "1 子放天元。" : "按标准星位摆放。 ");
+                    handicapPreview.Text += "\r\n贴目仍归白方；让子与规则应用于下一局。";
+                };
+                handicapDirection.SelectedIndexChanged += delegate { updateHandicapPreview(); }; handicapInput.ValueChanged += delegate { updateHandicapPreview(); }; updateHandicapPreview();
+                Label ruleLabel = new Label { Text = "规则", Location = new Point(23, 215), Size = new Size(86, 26) };
+                ComboBox ruleInput = Combo(new string[] { "中国规则 · 数子", "日本规则 · 数目" }); ruleInput.Name = "GameRule"; ruleInput.Location = new Point(117, 211); ruleInput.Width = 286; ruleInput.SelectedIndex = rules == "japanese" ? 1 : 0;
+                Label depthLabel = new Label { Text = "计算深度", Location = new Point(23, 255), Size = new Size(86, 26) };
+                Button depthButton = MakeButton("设置计算深度…", 166, delegate { ShowDepthSettings(dialog); }); depthButton.Location = new Point(117, 249); depthButton.Height = 30;
+                Label volumeLabel = new Label { Text = "落子音量", Location = new Point(23, 297), Size = new Size(86, 27) };
+                TrackBar volumeInput = new TrackBar { Name = "StoneVolume", Location = new Point(108, 288), Size = new Size(181, 45), Minimum = 0, Maximum = 100, TickFrequency = 25, SmallChange = 5, LargeChange = 10, Value = stoneSound.Volume };
+                Label volumePercent = new Label { Name = "StoneVolumePercent", Text = volumeInput.Value + "%", Location = new Point(289, 297), Size = new Size(47, 27) };
                 volumeInput.ValueChanged += delegate { volumePercent.Text = volumeInput.Value + "%"; };
-                Button soundPreview = MakeButton("试听落子声音", 166, delegate { stoneSound.Preview(volumeInput.Value); }); soundPreview.Name = "StoneSoundPreview"; soundPreview.Location = new Point(117, 235); soundPreview.Height = 30;
-                Label info = new Label { Text = "对局设置应用于下一局。\r\n音量确认后立即生效；0% 为静音。", Location = new Point(23, 281), Size = new Size(304, 42), ForeColor = muted };
+                Button soundPreview = MakeButton("试听落子声音", 166, delegate { stoneSound.Preview(volumeInput.Value); }); soundPreview.Name = "StoneSoundPreview"; soundPreview.Location = new Point(117, 337); soundPreview.Height = 30;
+                Label info = new Label { Text = "点确定后，再点“新对局”应用让子与规则。\r\n音量确认后立即生效；0% 为静音。", Location = new Point(23, 381), Size = new Size(389, 42), ForeColor = muted };
                 Button ok = MakeButton("确定", 85, delegate {
-                    if (handicapInput.Value == 1) { MessageBox.Show(dialog, "让子请选择 0 或 2–9 子。"); return; }
                     if ((komiInput.Value * 2) % 1 != 0) { MessageBox.Show(dialog, "贴目请输入整数或半目，例如 6.5 或 7.5。"); return; }
                     try { if (persistEnginePreferences) AudioSettings.SaveVolume(volumeInput.Value); }
                     catch (Exception ex) { MessageBox.Show(dialog, "无法保存音量：" + ex.Message, "设置", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
                     stoneSound.Volume = volumeInput.Value;
-                    komi = (double)komiInput.Value; handicap = (int)handicapInput.Value; rules = ruleInput.SelectedIndex == 1 ? "japanese" : "chinese-ogs"; dialog.DialogResult = DialogResult.OK;
-                }); ok.Name = "GameSettingsOk"; ok.Location = new Point(215, 340);
-                Button cancel = MakeButton("取消", 85, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "GameSettingsCancel"; cancel.Location = new Point(119, 340);
-                dialog.Controls.AddRange(new Control[] { k, komiInput, h, handicapInput, ruleLabel, ruleInput, depthLabel, depthButton, volumeLabel, volumeInput, volumePercent, soundPreview, info, ok, cancel }); dialog.AcceptButton = ok; dialog.CancelButton = cancel; dialog.ShowDialog(this);
+                    komi = (double)komiInput.Value; handicap = (int)handicapInput.Value; handicapColor = handicapDirection.SelectedIndex == 1 ? Stone.White : Stone.Black; rules = ruleInput.SelectedIndex == 1 ? "japanese" : "chinese-ogs"; dialog.DialogResult = DialogResult.OK;
+                }); ok.Name = "GameSettingsOk"; ok.Location = new Point(318, 445);
+                Button cancel = MakeButton("取消", 85, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "GameSettingsCancel"; cancel.Location = new Point(222, 445);
+                dialog.Controls.AddRange(new Control[] { k, komiInput, h, handicapDirection, countLabel, handicapInput, countHint, handicapPreview, ruleLabel, ruleInput, depthLabel, depthButton, volumeLabel, volumeInput, volumePercent, soundPreview, info, ok, cancel }); dialog.AcceptButton = ok; dialog.CancelButton = cancel; dialog.ShowDialog(this);
             }
         }
         private void ShowHelp()
         {
-            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n选择执白后，AI 会先行；选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n分先时选择执白，AI 会先行；让子棋按实际先行方应手。选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n规则 / 设置中可选择黑让白或白让黑 0–9 子，确认后点新对局生效。\r\n1 子放天元，获得让子的一方先摆，对方先行。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         private void OnShortcut(object sender, KeyEventArgs e)
         {

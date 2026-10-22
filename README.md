@@ -2,7 +2,7 @@
 
 **致敬六大至尊围棋王“梓”和“懿”。**
 
-梓懿围棋是可离线运行的 Windows 围棋对弈与复盘工具，使用本机 KataGo 计算着法。当前版本 **1.4.0** 加入 CUDA 加速；完整便携包在 NVIDIA 电脑上优先选择 CUDA，同时保留 OpenCL、CPU 和带日期的模型选择。
+梓懿围棋是可离线运行的 Windows 围棋对弈与复盘工具，使用本机 KataGo 计算着法。当前版本 **1.5.0** 增加双向 0–9 子让子，继续支持 CUDA、OpenCL、CPU 和带日期的模型选择。已有 GPU 便携包的用户只需下载约 16 MB 的升级包；GPU 引擎、运行库和模型沿用 v1.4.0。
 
 [下载最新版本](https://github.com/vict1238/ziyi-weiqi/releases/latest) · [版本记录](CHANGELOG.md) · [使用说明](使用说明.txt)
 
@@ -14,10 +14,15 @@
 
 | 下载 | 用途 |
 | --- | --- |
-| [CUDA / OpenCL 完整便携包](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-Windows-CUDA-v1.4.0.zip) | 含两种 GPU 引擎、最强 tf3、原 b18 及 CUDA 运行库；解压后运行 `梓懿围棋.exe` |
-| [CPU 单文件程序](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-v1.4.0.exe) | 内置轻量 CPU 引擎与 b10 模型，可直接运行 |
-| [完整源码](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-source-v1.4.0.zip) | 源码、CPU 资源与固定版本 GPU 准备脚本 |
-| [SHA-256 校验清单](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/SHA256SUMS.txt) | 核对下载文件 |
+| [v1.5.0 升级包，约 16 MB](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.5.0/ziyi-weiqi-Windows-Update-v1.5.0.zip) | 主程序、说明与许可；解压到原程序目录，覆盖同名文件 |
+| [v1.5.0 CPU 单文件程序](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.5.0/ziyi-weiqi-v1.5.0.exe) | 内置轻量 CPU 引擎与 b10 模型，可直接运行 |
+| [v1.5.0 完整源码](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.5.0/ziyi-weiqi-source-v1.5.0.zip) | 源码、CPU 资源与固定版本 GPU 准备脚本 |
+| [v1.5.0 SHA-256 校验清单](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.5.0/SHA256SUMS.txt) | 核对本版三个发布文件 |
+| [v1.4.0 CUDA / OpenCL 基础包](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-Windows-CUDA-v1.4.0.zip) | 新 GPU 用户先下载：包含两种 GPU 引擎、最强 tf3、原 b18 与 CUDA 运行库 |
+
+**已有 v1.4.0 完整 GPU 包**：关闭梓懿围棋，将 v1.5.0 升级包内文件解压到原来的 `梓懿围棋.exe` 所在目录并覆盖同名文件，再运行更新后的程序。保留原有的 `cuda`、`gpu` 文件夹，无需重新下载引擎或模型。
+
+**首次使用 GPU**：先下载并解压上表的 v1.4.0 基础包，再将 v1.5.0 升级包内文件解压到同一程序目录并覆盖，最后运行 `梓懿围棋.exe`。本版提供升级包，GPU 依赖继续使用相同的 v1.4.0 基础包。
 
 完整包中的 `cuda`、`gpu` 文件夹须与主程序相邻，两个 GPU 后端共用 `gpu/models`。CUDA 运行库已随包提供，**无需安装完整 CUDA Toolkit**；仍需兼容的 NVIDIA 显卡和驱动。其他显卡可选择 OpenCL，首次加载模型或棋盘尺寸时可能调优数分钟。准备完成后，下棋无需联网或账号。
 
@@ -28,7 +33,8 @@ Windows 智能应用控制可能阻止未获信任的引擎，程序会显示具
 ## 功能
 
 - 人执黑、执白、AI 自动应手、AI 自弈及双方自由复盘。
-- 9 / 13 / 19 路棋盘，中国 / 日本规则、贴目和让子。
+- 9 / 13 / 19 路棋盘、中国 / 日本规则与独立贴目设置。
+- 双向 0–9 子让子：“白让黑”由黑棋先摆、白方先行；“黑让白”由白棋先摆、黑方先行。0 为分先，1 子放天元，2–9 子按标准星位摆放；在“规则 / 设置”确认后点“新对局”生效。
 - 棋盘列连续编号；19 路为 **A–S（包含 I）**，行从顶部 **1** 到底部 **19**。落子、复盘、推荐和进度中的坐标一致。
 - 推荐着点、黑方胜率、目差及领地归属估计，搜索时实时更新。
 - 悔棋、停一手、逐手回看、SGF 主变化及初始摆子导入导出。
@@ -37,6 +43,14 @@ Windows 智能应用控制可能阻止未获信任的引擎，程序会显示具
 - 棋子落盘音效；在“规则 / 设置”中调节 0–100% 音量并试听，确认后生效。
 
 默认 19 路、人执黑、AI 自动应手。方向键切换前后手，`Home` / `End` 跳到首手 / 末手，`Ctrl+O` / `Ctrl+S` 打开 / 保存棋谱。回看中落子会覆盖当前位置之后的变化。
+
+## 联机对弈
+
+当前程序使用本地 KataGo，“双方 · 自由复盘”表示同一台电脑操作黑白。公网人对人对弈需要新增房间服务器、玩家身份、落子同步与断线恢复服务；实现方案见 [联机设计](docs/ONLINE-PLAY.md)。
+
+## 本版验证
+
+**2008 项**规则、SGF、搜索预算、坐标、配置、模型与声音断言，以及新增 **134 项**让子界面断言全部通过。真实 CPU / CUDA 引擎检查覆盖双向让子的初始摆子、AI 首手、合法落子与完整领地结果；详细记录见 [验证记录](验证记录.txt)。下方性能表沿用 v1.4.0 的 36 次正式对比，本版没有重新测量加速倍数。
 
 ## 模型与计算量
 
@@ -77,7 +91,7 @@ Windows 需提供 .NET Framework 4.8 和 `Framework64\v4.0.30319\csc.exe`。项�
 .\prepare-cuda.ps1
 ```
 
-主程序输出到 `release\梓懿围棋-v1.4.0\梓懿围棋.exe`。后两步分别准备 OpenCL / 模型与 CUDA 运行库，输出到相邻的 `gpu`、`cuda` 目录；下载固定官方版本并核验长度与 SHA-256，同时保留许可。默认下载缓存为 `%LOCALAPPDATA%\GoDesk\downloads`，已有缓存可复用：
+主程序输出到 `release\梓懿围棋-v1.5.0\梓懿围棋.exe`。后两步分别准备 OpenCL / 模型与 CUDA 运行库，输出到相邻的 `gpu`、`cuda` 目录；下载固定官方版本并核验长度与 SHA-256，同时保留许可。默认下载缓存为 `%LOCALAPPDATA%\GoDesk\downloads`，已有缓存可复用：
 
 ```powershell
 .\prepare-gpu.ps1 -SourceCache 'D:\KataGo-downloads'
@@ -90,7 +104,7 @@ Windows 需提供 .NET Framework 4.8 和 `Framework64\v4.0.30319\csc.exe`。项�
 
 ```powershell
 .\build.ps1 -Checks
-Start-Process -FilePath '.\release\梓懿围棋-v1.4.0\梓懿围棋.exe' `
+Start-Process -FilePath '.\release\梓懿围棋-v1.5.0\梓懿围棋.exe' `
   -ArgumentList '--ui-test', '.\qa\ui-test.txt' -WindowStyle Hidden -Wait
 Get-Content .\qa\ui-test.txt
 ```

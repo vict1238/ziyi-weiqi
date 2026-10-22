@@ -1,6 +1,8 @@
 ﻿PASS
-19x19 real KataGo analysis + ownership + legal move: Q3; 0.82s
-9x9 SGF setup stones + initial player + legal move: F6
+19x19 real KataGo analysis + ownership + legal move: Q4; 1.31s
+9x9 SGF setup stones + initial player + legal move: G5
+9x9 White setup: initialStones=W x2, initialPlayer=B, AW + PL[B], 81 valid ownership values, legal Black first move: F4
+9x9 single Black setup: initialStones=B x1 at tengen, initialPlayer=W, 81 valid ownership values, legal White first move: C5
 Cancellation: PASS
 Engine remains usable after cancellation: F5
 Custom 3,000,000,000 visits accepted without integer overflow + live progress + cancel: PASS

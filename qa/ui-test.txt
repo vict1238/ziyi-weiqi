@@ -5,6 +5,7 @@ Unconfirmed custom selection keeps the committed depth; Cancel restores preset: 
 Board hit-test -> human display D16 -> actual KataGo reply; AI/history screen coordinates: PASS
 Engine/model settings cancel + validation + profile swap keep game and user preferences: PASS
 Stone volume dialog draft/cancel/confirm; checks stay muted and do not save preferences: PASS
+Bidirectional handicap settings draft/cancel/confirm, New Game, 0/1/2 stones, SGF save/load and both real AI first replies: PASS (134 assertions)
 Best hints control + real candidates: PASS
 Score control + 361 ownership values: PASS
 Undo a human / AI pair: PASS

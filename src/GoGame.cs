@@ -93,10 +93,19 @@ namespace GoDesk
 
         public void NewGame(int boardSize, double newKomi, int handicap)
         {
+            NewGame(boardSize, newKomi, handicap, Stone.Black);
+        }
+
+        // The recipient receives setup stones; the opponent makes the first
+        // actual move. A zero-stone game always starts with Black.
+        public void NewGame(int boardSize, double newKomi, int handicap, Stone handicapRecipient)
+        {
             if (boardSize < 2 || boardSize > 25)
                 throw new ArgumentException("棋盘边长必须在 2 到 25 之间。");
             if (handicap < 0 || handicap > 9 || (handicap > 0 && boardSize < 7))
                 throw new ArgumentException("让子数必须在 0 到 9 之间，让子棋盘至少为 7 路。");
+            if (handicapRecipient != Stone.Black && handicapRecipient != Stone.White)
+                throw new ArgumentException("获得让子的一方必须为黑棋或白棋。", "handicapRecipient");
             // Validate before resetting a game, so a failed request preserves it.
             if (!IsValidKomi(newKomi))
                 throw new ArgumentException("贴目必须在 -150 到 150 之间，且为整数或半整数（如 6、6.5）。");
@@ -107,31 +116,31 @@ namespace GoDesk
             initialStones.Clear();
             metadata.Clear();
             ImportNotice = null;
-            initialPlayer = handicap > 0 ? Stone.White : Stone.Black;
+            initialPlayer = handicap > 0 ? Opponent(handicapRecipient) : Stone.Black;
             if (handicap == 1)
             {
-                AddInitial(size / 2, size / 2, Stone.Black);
+                AddInitial(size / 2, size / 2, handicapRecipient);
             }
             else if (handicap >= 2)
             {
                 int low = size < 13 ? 2 : 3;
                 int high = size - 1 - low;
                 int middle = size / 2;
-                AddInitial(high, low, Stone.Black);
-                AddInitial(low, high, Stone.Black);
-                if (handicap >= 3) AddInitial(high, high, Stone.Black);
-                if (handicap >= 4) AddInitial(low, low, Stone.Black);
+                AddInitial(high, low, handicapRecipient);
+                AddInitial(low, high, handicapRecipient);
+                if (handicap >= 3) AddInitial(high, high, handicapRecipient);
+                if (handicap >= 4) AddInitial(low, low, handicapRecipient);
                 if (handicap == 5 || handicap == 7 || handicap == 9)
-                    AddInitial(middle, middle, Stone.Black);
+                    AddInitial(middle, middle, handicapRecipient);
                 if (handicap >= 6)
                 {
-                    AddInitial(low, middle, Stone.Black);
-                    AddInitial(high, middle, Stone.Black);
+                    AddInitial(low, middle, handicapRecipient);
+                    AddInitial(high, middle, handicapRecipient);
                 }
                 if (handicap >= 8)
                 {
-                    AddInitial(middle, low, Stone.Black);
-                    AddInitial(middle, high, Stone.Black);
+                    AddInitial(middle, low, handicapRecipient);
+                    AddInitial(middle, high, handicapRecipient);
                 }
             }
             ResetStates();
@@ -308,7 +317,7 @@ namespace GoDesk
         public string ToSgf()
         {
             StringBuilder b = new StringBuilder();
-            b.Append("(;GM[1]FF[4]CA[UTF-8]AP[梓懿围棋:1.4]RU[")
+            b.Append("(;GM[1]FF[4]CA[UTF-8]AP[梓懿围棋:1.5]RU[")
                 .Append(rules == "japanese" ? "Japanese" : "Chinese").Append("]SZ[").Append(size)
                 .Append("]KM[").Append(komi.ToString("0.################", CultureInfo.InvariantCulture)).Append(']');
             int blacks = 0, whites = 0;
