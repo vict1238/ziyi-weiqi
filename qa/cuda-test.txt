@@ -1,6 +1,6 @@
 ﻿PASS
 GPU profile: GPU · CUDA · tf3-b11c768 最强模型 · 2026-09-25（官方上传）
-19x19 real KataGo analysis + ownership + legal move: R4; 6.00s
+19x19 real KataGo analysis + ownership + legal move: R4; 4.66s
 9x9 SGF setup stones + initial player + legal move: G5
 9x9 White setup: initialStones=W x2, initialPlayer=B, AW + PL[B], 81 valid ownership values, legal Black first move: F6
 9x9 single Black setup: initialStones=B x1 at tengen, initialPlayer=W, 81 valid ownership values, legal White first move: C4

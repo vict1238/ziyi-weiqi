@@ -29,6 +29,7 @@ namespace GoDesk
         private CheckBox moveNumbersBox;
         private Label studyRegionStatus, variationLabel;
         private string studyComparisonSummary;
+        private int analysisPosition = -1;
         private ComboBox humanBox, sizeBox, difficultyBox;
         private CheckBox automaticBox;
         private Button aiButton, hintButton, scoreButton, passButton, undoButton, cancelButton, selfPlayButton;
@@ -509,7 +510,7 @@ namespace GoDesk
         private async Task CompareGloballyAsync()
         {
             if (studyRegion == null) { SetStatus("请先框选局部，再比较全盘推荐。"); return; }
-            AnalysisResult localResult = analysis != null && analysis.Region != null ? analysis : null;
+            AnalysisResult localResult = analysis != null && analysis.Region != null && analysisPosition == game.Position ? analysis : null;
             CancelAnalysis(); board.SelectingRegion = false; ClearAnalysis();
             int comparisonGeneration = generation + 1;
             await RunAnalysisAsync(false, false, true);
@@ -538,13 +539,15 @@ namespace GoDesk
             {
                 AnalysisResult result = await engine.AnalyzeAsync(game, Visits, ownership, partial => ShowAnalysisProgress(stamp, partial, play, ownership), requestedRegion);
                 if (closing || stamp != generation) return;
-                analysis = result; board.Analysis = result; board.ShowHints = !play && !ownership; board.ShowOwnership = ownership;
+                analysis = result; analysisPosition = game.Position; studyComparisonSummary = null;
+                board.Analysis = result; board.ShowHints = !play && !ownership; board.ShowOwnership = ownership;
                 if (play)
                 {
                     string error;
                     Move selected = GoGame.ParseGtp(result.BestMove, game.ToPlay, game.Size);
                     if (requestedRegion != null && (selected.IsPass || !requestedRegion.Contains(selected.X, selected.Y))) throw new InvalidOperationException("AI 返回了研究范围外的着法，已拒绝落子。");
                     if (!game.TryPlayMove(selected, out error)) throw new InvalidOperationException("引擎返回的着点无法落子：" + error);
+                    analysisPosition = -1; studyComparisonSummary = null;
                     if (!selected.IsPass) stoneSound.Play();
                     board.ShowHints = false; board.ShowOwnership = false;
                     SetStatus("KataGo：" + selected.ToDisplay(game.Size) + "。" + (game.IsOver ? "双方连续停着，对局结束。" : selfPlaying ? "AI 正在自弈。" : "轮到你了。"));
@@ -572,7 +575,8 @@ namespace GoDesk
                 return;
             }
             if (stamp != generation || !thinking) return;
-            analysis = result; board.Analysis = result; board.ShowHints = !play && !ownership; board.ShowOwnership = ownership;
+            analysis = result; analysisPosition = game.Position; studyComparisonSummary = null;
+            board.Analysis = result; board.ShowHints = !play && !ownership; board.ShowOwnership = ownership;
             UpdateUi();
             if (!stopping) SetStatus("已搜索 " + result.Visits.ToString("N0", CultureInfo.InvariantCulture) + " 次，当前最佳 " + BoardCoordinates.FromGtp(result.BestMove, game.Size) + "。可结束思考采用当前结果。");
         }
@@ -590,7 +594,7 @@ namespace GoDesk
         private void ClearAnalysis()
         {
             analysis = null; board.Analysis = null; board.ShowHints = false; board.ShowOwnership = false;
-            studyComparisonSummary = null;
+            studyComparisonSummary = null; analysisPosition = -1;
             if (variationLabel != null) { variationLabel.Text = ""; variationLabel.Visible = false; }
             hintButton.Text = "推荐着点"; scoreButton.Text = "形势 / 领地";
         }

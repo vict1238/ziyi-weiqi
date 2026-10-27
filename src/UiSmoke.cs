@@ -262,11 +262,13 @@ namespace GoDesk
                 Check(((Label)form.Controls.Find("AnalysisVariation", true)[0]).Text.Length > 0, "Local recommendation has no displayed principal variation");
                 form.CaptureScreenshot(Path.Combine(outputFolder, "desktop-local-study.png"));
 
+                string comparedLocalMove = board.Analysis.BestMove;
                 compare.PerformClick(); await WaitIdle(form);
                 Check(board.Analysis != null && board.Analysis.Region == null && form.CurrentGame.ToSgf() == before && form.CurrentGame.Position == 7,
                     "Global comparison applied a move or retained a local restriction");
                 CheckSameRegion(board.StudyRegion, region, "Global comparison cleared the selected study frame");
                 CheckSameRegion((StudyRegion)Field(form, "studyRegion"), region, "Global comparison replaced the active local mode");
+                CheckStudyComparisonSummary(form, comparedLocalMove, board.Analysis.BestMove, 9, 7);
                 Check(hints.Text == "返回局部推荐", "Global comparison did not expose a direct return-to-local action");
                 hints.PerformClick(); await WaitIdle(form);
                 CheckUiRestrictedAnalysis(board.Analysis, region, 9);
@@ -287,6 +289,25 @@ namespace GoDesk
                 Check(!played.IsPass && played.Color == Stone.White && region.Contains(played.X, played.Y), "AI move after comparison escaped the region or changed turn color");
                 CheckUiRestrictedAnalysis(board.Analysis, region, 9);
                 Check(MoveNumbers.Build(form.CurrentGame)[played.X, played.Y] == 8, "Local play restarted move numbering instead of keeping the original ply");
+                Check(Field(form, "studyComparisonSummary") == null && (int)Field(form, "analysisPosition") == -1,
+                    "An applied AI move retained a comparison summary or tagged its old local analysis as current");
+
+                string afterAiMove = form.CurrentGame.ToSgf();
+                compare.PerformClick(); await WaitIdle(form);
+                Check(board.Analysis != null && board.Analysis.Region == null && Field(form, "studyComparisonSummary") == null &&
+                    (int)Field(form, "analysisPosition") == 8 && form.CurrentGame.Position == 8 && form.CurrentGame.ToSgf() == afterAiMove,
+                    "Post-move global comparison paired stale local analysis or modified the new position");
+                CheckSameRegion(board.StudyRegion, region, "Post-move global comparison cleared the study frame");
+                hints.PerformClick(); await WaitIdle(form);
+                CheckUiRestrictedAnalysis(board.Analysis, region, 9);
+                Check((int)Field(form, "analysisPosition") == 8 && form.CurrentGame.ToSgf() == afterAiMove,
+                    "Returning to local analysis failed to tag the new unchanged position");
+                comparedLocalMove = board.Analysis.BestMove;
+                compare.PerformClick(); await WaitIdle(form);
+                CheckStudyComparisonSummary(form, comparedLocalMove, board.Analysis.BestMove, 9, 8);
+                Check(form.CurrentGame.Position == 8 && form.CurrentGame.ToSgf() == afterAiMove,
+                    "Fresh same-position comparison applied another move");
+                CheckSameRegion(board.StudyRegion, region, "Fresh comparison changed the active study frame");
 
                 human.SelectedIndex = 0;
                 automatic.Checked = true;
@@ -424,6 +445,15 @@ namespace GoDesk
         private static void CheckSameRegion(StudyRegion actual, StudyRegion expected, string message)
         {
             Check(actual != null && actual.Left == expected.Left && actual.Top == expected.Top && actual.Right == expected.Right && actual.Bottom == expected.Bottom, message);
+        }
+
+        private static void CheckStudyComparisonSummary(MainForm form, string localMove, string globalMove, int size, int position)
+        {
+            string summary = (string)Field(form, "studyComparisonSummary");
+            Check(!String.IsNullOrEmpty(summary) && summary.Contains("局部 A：" + BoardCoordinates.FromGtp(localMove, size)) &&
+                summary.Contains("全局 A：" + BoardCoordinates.FromGtp(globalMove, size)), "Same-position comparison summary omits or mismatches its two coordinates");
+            Check((int)Field(form, "analysisPosition") == position && ((Label)form.Controls.Find("StudyRegionStatus", true)[0]).Text.Contains(summary),
+                "Comparison summary is not displayed for its actual analyzed position");
         }
 
         private static void CheckUiRestrictedAnalysis(AnalysisResult result, StudyRegion expected, int size)
