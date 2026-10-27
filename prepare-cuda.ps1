@@ -1,6 +1,6 @@
 ﻿param(
     [string]$SourceCache = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'GoDesk\downloads'),
-    [string]$Destination = (Join-Path $PSScriptRoot 'release\梓懿围棋-v1.5.0\cuda')
+    [string]$Destination = (Join-Path $PSScriptRoot 'release\梓懿围棋-v1.6.0\cuda')
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

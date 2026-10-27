@@ -32,7 +32,9 @@ namespace GoDesk
                     string result = GoGameTests.Run() + Environment.NewLine + SearchDepthTests.Run() +
                         Environment.NewLine + BoardCoordinatesTests.Run() + Environment.NewLine + EngineSettingsTests.Run() +
                         Environment.NewLine + ModelCatalogTests.Run() +
-                        Environment.NewLine + StoneSoundTests.Run();
+                        Environment.NewLine + StoneSoundTests.Run() +
+                        Environment.NewLine + LocalStudyTests.Run() +
+                        Environment.NewLine + MoveNumbersTests.Run();
                     WriteReport(args, "PASS\n" + result);
                     return 0;
                 }
@@ -137,6 +139,8 @@ namespace GoDesk
                     "Single Black setup must be followed by the first actual White move");
                 report.AppendLine("9x9 single Black setup: initialStones=B x1 at tengen, initialPlayer=W, 81 valid ownership values, legal White first move: " + blackSingleAnalysis.BestMove);
 
+                report.Append(await CheckLocalStudyEngineAsync(engine));
+
                 Task<AnalysisResult> pending = engine.AnalyzeAsync(new GoGame(19, 7.5), 4096, false);
                 await Task.Delay(180);
                 engine.Cancel();
@@ -169,6 +173,75 @@ namespace GoDesk
                 report.AppendLine("Continuous search -> Stop -> usable final best move and territory: " + stopped.BestMove);
             }
             return report.ToString();
+        }
+
+        private static async Task<string> CheckLocalStudyEngineAsync(KataGoEngine engine)
+        {
+            var report = new StringBuilder();
+            var region = new StudyRegion(0, 0, 3, 3);
+            var game = new GoGame(9, 7.5);
+            string error;
+            var black = await engine.AnalyzeAsync(game, 8, true, null, region);
+            CheckRestrictedAnalysis(black, region, 9);
+            Assert(game.TryPlayMove(GoGame.ParseGtp(black.BestMove, Stone.Black, 9), out error), "Restricted Black move is illegal: " + error);
+            var white = await engine.AnalyzeAsync(game, 8, true, null, region);
+            CheckRestrictedAnalysis(white, region, 9);
+            Assert(game.TryPlayMove(GoGame.ParseGtp(white.BestMove, Stone.White, 9), out error), "Restricted White move is illegal: " + error);
+            Assert(game.Position == 2 && game.ToPlay == Stone.Black, "Restricted searches lost actual move colors");
+            report.AppendLine("9x9 local study A1–D4: Black and White legal moves; every candidate/PV coordinate restricted, no pass; full-board ownership x81: PASS");
+
+            string beforeComparison = game.ToSgf();
+            var global = await engine.AnalyzeAsync(game, 8, true);
+            CheckAnalysis(global, 81);
+            Assert(global.Region == null && game.ToSgf() == beforeComparison, "Global comparison retained local restriction or modified the game");
+            var resumed = await engine.AnalyzeAsync(game, 8, true, null, region);
+            CheckRestrictedAnalysis(resumed, region, 9);
+            Assert(game.ToSgf() == beforeComparison, "Returning to local analysis changed the game");
+            report.AppendLine("Local -> global comparison -> local in one native process, independent result scopes and unchanged board: PASS");
+
+            var occupied = new GoGame(9, 7.5);
+            Assert(occupied.TryPlay(0, 0, out error), error);
+            await CheckLocalRejectionAsync(engine, occupied, new StudyRegion(0, 0, 0, 0), false);
+            var suicide = GoGame.FromSgf("(;SZ[9]KM[7.5]RU[Chinese]AW[ab][ba]PL[B])");
+            await CheckLocalRejectionAsync(engine, suicide, new StudyRegion(0, 0, 0, 0), false);
+            await CheckLocalRejectionAsync(engine, game, new StudyRegion(-1, 0, 2, 2), true);
+            var afterRejection = await engine.AnalyzeAsync(game, 8, true, null, region);
+            CheckRestrictedAnalysis(afterRejection, region, 9);
+            report.AppendLine("Occupied single-point, suicide-only and out-of-bounds regions fail before native analysis; no global fallback; same engine remains usable: PASS");
+            return report.ToString();
+        }
+
+        private static async Task CheckLocalRejectionAsync(KataGoEngine engine, GoGame game, StudyRegion region, bool outOfBounds)
+        {
+            string before = game.ToSgf();
+            if (!outOfBounds) Assert(!LocalStudy.HasLegalMove(game, region), "Rejected region unexpectedly contains a legal move");
+            bool rejected = false;
+            try { await engine.AnalyzeAsync(game, 8, true, null, region); }
+            catch (ArgumentOutOfRangeException) { if (!outOfBounds) throw; rejected = true; }
+            catch (InvalidOperationException) { if (outOfBounds) throw; rejected = true; }
+            Assert(rejected, "Invalid local region silently fell back to an unrestricted search");
+            Assert(game.ToSgf() == before && engine.IsReady,
+                "Local preflight failure modified the board or disabled the active native engine");
+        }
+
+        private static void CheckRestrictedAnalysis(AnalysisResult result, StudyRegion expected, int size)
+        {
+            CheckAnalysis(result, size * size);
+            Assert(result.Region != null && result.Region.Left == expected.Left && result.Region.Top == expected.Top &&
+                result.Region.Right == expected.Right && result.Region.Bottom == expected.Bottom, "Local result has missing or stale region identity");
+            AssertRestrictedCoordinate(result.BestMove, expected, size);
+            foreach (MoveCandidate candidate in result.Candidates)
+            {
+                AssertRestrictedCoordinate(candidate.Move, expected, size);
+                Assert(candidate.Pv != null && candidate.Pv.Length > 0, "Local candidate has no principal variation");
+                foreach (string coordinate in candidate.Pv) AssertRestrictedCoordinate(coordinate, expected, size);
+            }
+        }
+
+        private static void AssertRestrictedCoordinate(string coordinate, StudyRegion region, int size)
+        {
+            Move move = GoGame.ParseGtp(coordinate, Stone.Black, size);
+            Assert(!move.IsPass && region.Contains(move.X, move.Y), "Local candidate/PV left its rectangle or passed: " + coordinate);
         }
 
         private static void AssertInitialSetup(GoGame game, int count, Stone recipient, Stone firstPlayer)

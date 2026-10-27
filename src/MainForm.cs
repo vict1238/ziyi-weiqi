@@ -24,6 +24,11 @@ namespace GoDesk
         private int engineSession;
         private AnalysisResult analysis;
         private BoardControl board;
+        private StudyRegion studyRegion;
+        private Button selectStudyButton, clearStudyButton, globalComparisonButton;
+        private CheckBox moveNumbersBox;
+        private Label studyRegionStatus, variationLabel;
+        private string studyComparisonSummary;
         private ComboBox humanBox, sizeBox, difficultyBox;
         private CheckBox automaticBox;
         private Button aiButton, hintButton, scoreButton, passButton, undoButton, cancelButton, selfPlayButton;
@@ -92,7 +97,7 @@ namespace GoDesk
             help.DropDownItems.Add("使用说明", null, delegate { ShowHelp(); });
             help.DropDownItems.Add("引擎 / 模型设置…", null, delegate { ShowEngineSettings(this); });
             help.DropDownItems.Add("第三方许可", null, delegate { Program.ShowLicenses(this); });
-            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.5\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nNVIDIA 显卡可使用 CUDA 加速，设置中可选择 CUDA、OpenCL 或 CPU。\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），保留旧模型与本地模型选择。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持双向 0–9 子让子与 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
+            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.6\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nNVIDIA 显卡可使用 CUDA 加速，设置中可选择 CUDA、OpenCL 或 CPU。\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），保留旧模型与本地模型选择。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持局部研究、棋子手数、双向 0–9 子让子与 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
             menu.Items.Add(file); menu.Items.Add(help); MainMenuStrip = menu;
 
             Panel header = new Panel { Dock = DockStyle.Top, Height = 66, Padding = new Padding(26, 9, 24, 8), BackColor = Color.FromArgb(250, 249, 246) };
@@ -120,6 +125,7 @@ namespace GoDesk
             footer.Controls.Add(navigation); footer.Controls.Add(captureLabel);
             board = new BoardControl { Dock = DockStyle.Fill, Name = "GoBoard", Game = game };
             board.PointClicked += OnBoardPoint;
+            board.RegionSelected += OnStudyRegionSelected;
             left.Controls.Add(board); left.Controls.Add(boardHeader); left.Controls.Add(footer);
 
             Panel sideHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(250, 249, 246), Padding = new Padding(15, 14, 15, 10), AutoScroll = true };
@@ -135,6 +141,20 @@ namespace GoDesk
             Button settings = MakeButton("规则 / 设置", 104, delegate { GameSettings(); }); settings.Location = new Point(160, 0); settings.Height = 30;
             boardRow.Controls.Add(sizeLabel); boardRow.Controls.Add(sizeBox); boardRow.Controls.Add(settings); side.Controls.Add(boardRow);
             Button newGameButton = MakeButton("新对局", 264, delegate { NewGame(); }); newGameButton.Name = "NewGame"; side.Controls.Add(newGameButton);
+            Panel studyRow = new Panel { Width = 264, Height = 36, Margin = new Padding(0) };
+            selectStudyButton = MakeButton("框选局部", 129, delegate { SelectStudyRegion(); }); selectStudyButton.Name = "SelectStudyRegion";
+            clearStudyButton = MakeButton("退出局部", 129, delegate { ClearStudyRegion(); }); clearStudyButton.Name = "ClearStudyRegion"; clearStudyButton.Location = new Point(135, 0);
+            studyRow.Controls.Add(selectStudyButton); studyRow.Controls.Add(clearStudyButton); side.Controls.Add(studyRow);
+            Panel studyOptions = new Panel { Width = 264, Height = 36, Margin = new Padding(0) };
+            globalComparisonButton = MakeButton("全局对比", 129, async delegate { await CompareGloballyAsync(); }); globalComparisonButton.Name = "GlobalComparison";
+            moveNumbersBox = new CheckBox { Name = "ShowMoveNumbers", Text = "显示手数", Location = new Point(141, 4), Width = 123, Height = 27 };
+            moveNumbersBox.CheckedChanged += delegate { board.ShowMoveNumbers = moveNumbersBox.Checked; };
+            studyOptions.Controls.Add(globalComparisonButton); studyOptions.Controls.Add(moveNumbersBox); side.Controls.Add(studyOptions);
+            studyRegionStatus = new Label { Name = "StudyRegionStatus", Width = 264, Height = 36, ForeColor = muted, Margin = new Padding(0, 0, 0, 3), Font = new Font("Microsoft YaHei UI", 8) };
+            side.Controls.Add(studyRegionStatus);
+            tooltips.SetToolTip(selectStudyButton, "在棋盘上按住左键拖动框选。双方推演和实际落子限制在框内，保留全盘棋子作为背景。");
+            tooltips.SetToolTip(globalComparisonButton, "仅做一次全盘分析，不自动落子，也不清除研究框；下一次局部分析仍使用原区域。");
+            tooltips.SetToolTip(moveNumbersBox, "在现存棋子上显示原始落子手数；停着占手数，开局预摆棋子不编号。");
             side.Controls.Add(Divider());
             side.Controls.Add(SectionTitle("KataGo"));
             engineLabel = new Label { Width = 264, Height = 43, Text = "○  引擎待命\r\n首次分析时加载模型", ForeColor = muted, AutoEllipsis = true, Margin = new Padding(0, 0, 0, 5) };
@@ -157,7 +177,7 @@ namespace GoDesk
             selfPlayButton = MakeButton("AI 自弈", 89, async delegate { await ToggleSelfPlayAsync(); }); selfPlayButton.Name = "SelfPlay"; selfPlayButton.Location = new Point(175, 0);
             aiRow.Controls.Add(aiButton); aiRow.Controls.Add(selfPlayButton); side.Controls.Add(aiRow);
             Panel analysisRow = new Panel { Width = 264, Height = 39, Margin = new Padding(0) };
-            hintButton = MakeButton("推荐着点", 129, async delegate { if (analysis != null && board.ShowHints) { board.ShowHints = false; hintButton.Text = "推荐着点"; } else await AnalyzeAsync(false, false); }); hintButton.Name = "BestHints"; hintButton.Location = new Point(0, 0);
+            hintButton = MakeButton("推荐着点", 129, async delegate { if (analysis != null && board.ShowHints && !(studyRegion != null && analysis.Region == null)) { board.ShowHints = false; hintButton.Text = "推荐着点"; } else await AnalyzeAsync(false, false); }); hintButton.Name = "BestHints"; hintButton.Location = new Point(0, 0);
             scoreButton = MakeButton("形势 / 领地", 129, async delegate { if (analysis != null && board.ShowOwnership) { board.ShowOwnership = false; scoreButton.Text = "形势 / 领地"; } else await AnalyzeAsync(false, true); }); scoreButton.Name = "Score"; scoreButton.Location = new Point(135, 0);
             analysisRow.Controls.Add(hintButton); analysisRow.Controls.Add(scoreButton); side.Controls.Add(analysisRow);
             cancelButton = MakeButton("结束思考", 264, delegate { StopThinking(); }); cancelButton.Name = "StopThinking"; cancelButton.Visible = false; side.Controls.Add(cancelButton);
@@ -166,6 +186,8 @@ namespace GoDesk
             evaluationBar.Paint += PaintEvaluation;
             detailLabel = new Label { Width = 264, Height = 41, Text = "点击推荐着点，查看候选与胜率。", ForeColor = muted, AutoEllipsis = true, Margin = new Padding(0, 0, 0, 5) };
             side.Controls.Add(evaluationLabel); side.Controls.Add(evaluationBar); side.Controls.Add(detailLabel);
+            variationLabel = new Label { Name = "AnalysisVariation", Width = 264, Height = 56, ForeColor = muted, Visible = false, Margin = new Padding(0, 0, 0, 4), Font = new Font("Microsoft YaHei UI", 8) };
+            side.Controls.Add(variationLabel);
             side.Controls.Add(Divider());
             Panel playRow = new Panel { Width = 264, Height = 39, Margin = new Padding(0) };
             passButton = MakeButton("停一手", 129, delegate { PassMove(); }); passButton.Name = "Pass";
@@ -382,8 +404,9 @@ namespace GoDesk
         }
         private void OnBoardPoint(object sender, BoardPointEventArgs e)
         {
-            if (thinking || selfPlaying || game.IsOver) return;
+            if (thinking || selfPlaying || game.IsOver || board.SelectingRegion) return;
             if (!HumanTurn) { SetStatus("当前轮到 AI。点击 AI 落子，或选择双方自由复盘。"); return; }
+            if (studyRegion != null && !studyRegion.Contains(e.X, e.Y)) { SetStatus("落点在局部研究框外。请在框内落子，或扩大范围 / 退出局部。"); return; }
             string error;
             if (!game.TryPlay(e.X, e.Y, out error)) { SetStatus(error); return; }
             stoneSound.Play();
@@ -393,7 +416,7 @@ namespace GoDesk
         }
         private void PassMove()
         {
-            if (thinking || selfPlaying || game.IsOver || !HumanTurn) return;
+            if (thinking || selfPlaying || game.IsOver || !HumanTurn || board.SelectingRegion) return;
             CancelAnalysis(); game.Pass(); ClearAnalysis(); UpdateUi();
             SetStatus(game.IsOver ? "双方连续停着。点击形势 / 领地查看 KataGo 估计。" : "已停一手。");
             MaybeAutoMove();
@@ -415,7 +438,7 @@ namespace GoDesk
         private void NewGame()
         {
             CancelAnalysis(); int size = sizeBox.SelectedIndex == 1 ? 13 : sizeBox.SelectedIndex == 2 ? 9 : 19;
-            game.NewGame(size, komi, handicap, handicapColor); game.Rules = rules; ClearAnalysis(); board.Game = game; UpdateUi();
+            game.NewGame(size, komi, handicap, handicapColor); game.Rules = rules; ResetStudyRegion(); ClearAnalysis(); board.Game = game; UpdateUi();
             SetStatus("新对局已开始。" + (handicap > 0
                 ? (handicapColor == Stone.Black ? "白让黑 " : "黑让白 ") + handicap + " 子，" +
                     (handicapColor == Stone.Black ? "黑棋先摆，白方先行。" : "白棋先摆，黑方先行。")
@@ -425,19 +448,19 @@ namespace GoDesk
         {
             if (value == null) throw new ArgumentNullException("value");
             if (value.Size != 9 && value.Size != 13 && value.Size != 19) throw new ArgumentException("桌面版支持 9 路、13 路和 19 路棋谱。");
-            CancelAnalysis(); game = value; komi = game.Komi; rules = game.Rules; handicap = 0; handicapColor = Stone.Black;
+            CancelAnalysis(); ResetStudyRegion(); game = value; komi = game.Komi; rules = game.Rules; handicap = 0; handicapColor = Stone.Black;
             updating = true; sizeBox.SelectedIndex = game.Size == 13 ? 1 : game.Size == 9 ? 2 : 0; humanBox.SelectedIndex = 2; updating = false;
             ClearAnalysis(); board.Game = game; UpdateUi(); SetStatus((String.IsNullOrEmpty(game.ImportNotice) ? "" : game.ImportNotice + " ") + "棋谱已载入。用方向键复盘，或点击棋盘继续。");
         }
         private async void MaybeAutoMove()
         {
-            if (closing || thinking || selfPlaying || !automaticBox.Checked || humanBox.SelectedIndex == 2 || game.IsOver || HumanTurn) return;
+            if (closing || thinking || selfPlaying || board.SelectingRegion || !automaticBox.Checked || humanBox.SelectedIndex == 2 || game.IsOver || HumanTurn) return;
             await AnalyzeAsync(true, false);
         }
         private async Task ToggleSelfPlayAsync()
         {
             if (selfPlaying) { CancelAnalysis(); SetStatus("AI 自弈已停止。"); return; }
-            if (thinking || game.IsOver) return;
+            if (thinking || game.IsOver || board.SelectingRegion) return;
             CancelAnalysis();
             int session = ++selfPlaySession;
             selfPlaying = true;
@@ -461,27 +484,72 @@ namespace GoDesk
                 }
             }
         }
-        private async Task AnalyzeAsync(bool play, bool ownership)
+        private void SelectStudyRegion()
         {
-            if (closing || thinking || (play && game.IsOver)) return;
+            CancelAnalysis(); ClearAnalysis();
+            board.SelectingRegion = !board.SelectingRegion;
+            UpdateUi();
+            SetStatus(board.SelectingRegion ? "按住左键拖动框选研究区域；Esc 可取消，框选不会落子。" : "已取消框选，保留原研究区域。");
+        }
+        private void OnStudyRegionSelected(object sender, StudyRegionEventArgs e)
+        {
+            CancelAnalysis(); studyRegion = e.Region; studyRegion.Validate(game.Size);
+            board.SelectingRegion = false; board.StudyRegion = studyRegion;
+            ClearAnalysis(); UpdateUi();
+            SetStatus("已框选 " + studyRegion.Describe(game.Size) + "。双方在框内研究，可点击 AI 落子或推荐着点。");
+        }
+        private void ResetStudyRegion()
+        {
+            studyRegion = null; board.SelectingRegion = false; board.StudyRegion = null;
+        }
+        private void ClearStudyRegion()
+        {
+            CancelAnalysis(); ResetStudyRegion(); ClearAnalysis(); UpdateUi(); SetStatus("已退出局部研究，恢复全盘分析与落子。");
+        }
+        private async Task CompareGloballyAsync()
+        {
+            if (studyRegion == null) { SetStatus("请先框选局部，再比较全盘推荐。"); return; }
+            AnalysisResult localResult = analysis != null && analysis.Region != null ? analysis : null;
+            CancelAnalysis(); board.SelectingRegion = false; ClearAnalysis();
+            int comparisonGeneration = generation + 1;
+            await RunAnalysisAsync(false, false, true);
+            if (!closing && generation == comparisonGeneration && localResult != null && analysis != null && analysis.Region == null && studyRegion != null)
+            {
+                studyComparisonSummary = "局部 A：" + BoardCoordinates.FromGtp(localResult.BestMove, game.Size) + " · 全局 A：" + BoardCoordinates.FromGtp(analysis.BestMove, game.Size);
+                UpdateUi();
+            }
+        }
+        private Task AnalyzeAsync(bool play, bool ownership)
+        {
+            return RunAnalysisAsync(play, ownership, false);
+        }
+        private async Task RunAnalysisAsync(bool play, bool ownership, bool globalComparison)
+        {
+            if (closing || thinking || board.SelectingRegion || (play && game.IsOver)) return;
             if (engine == null) { SetStatus("请打开引擎 / 模型设置，确认可用的引擎与模型后重试。"); return; }
+            StudyRegion requestedRegion = globalComparison ? null : studyRegion;
+            if (requestedRegion != null && !LocalStudy.HasLegalMove(game, requestedRegion))
+            {
+                ClearAnalysis(); UpdateUi(); SetStatus("研究区域内暂无合法落点，请扩大范围或退出局部研究；没有自动脱先或停着。"); return;
+            }
             int stamp = ++generation;
-            thinking = true; stopping = false; analysisWillPlay = play; UpdateUi(); SetStatus(ownership ? "KataGo 正在分析形势与领地…" : play ? "KataGo 正在思考下一手…" : "KataGo 正在计算推荐着点…");
+            thinking = true; stopping = false; analysisWillPlay = play; UpdateUi(); SetStatus((globalComparison ? "全局对比：" : requestedRegion != null ? "局部研究：" : "") + (ownership ? "KataGo 正在分析形势与领地…" : play ? "KataGo 正在思考下一手…" : "KataGo 正在计算推荐着点…"));
             try
             {
-                AnalysisResult result = await engine.AnalyzeAsync(game, Visits, ownership, partial => ShowAnalysisProgress(stamp, partial, play, ownership));
+                AnalysisResult result = await engine.AnalyzeAsync(game, Visits, ownership, partial => ShowAnalysisProgress(stamp, partial, play, ownership), requestedRegion);
                 if (closing || stamp != generation) return;
                 analysis = result; board.Analysis = result; board.ShowHints = !play && !ownership; board.ShowOwnership = ownership;
                 if (play)
                 {
                     string error;
                     Move selected = GoGame.ParseGtp(result.BestMove, game.ToPlay, game.Size);
+                    if (requestedRegion != null && (selected.IsPass || !requestedRegion.Contains(selected.X, selected.Y))) throw new InvalidOperationException("AI 返回了研究范围外的着法，已拒绝落子。");
                     if (!game.TryPlayMove(selected, out error)) throw new InvalidOperationException("引擎返回的着点无法落子：" + error);
                     if (!selected.IsPass) stoneSound.Play();
                     board.ShowHints = false; board.ShowOwnership = false;
                     SetStatus("KataGo：" + selected.ToDisplay(game.Size) + "。" + (game.IsOver ? "双方连续停着，对局结束。" : selfPlaying ? "AI 正在自弈。" : "轮到你了。"));
                 }
-                else SetStatus(ownership ? "已显示领地估计。黑 / 白方块表示归属，结果为 AI 估计。" : "已显示推荐着点 A–E，A：" + BoardCoordinates.FromGtp(result.BestMove, game.Size) + "。");
+                else SetStatus((globalComparison ? "全局对比（仅分析，研究框保留）：" : requestedRegion != null ? "局部条件下：" : "") + (ownership ? "已显示全盘领地估计。黑 / 白方块表示归属，结果为 AI 估计。" : "已显示推荐着点 A–E，A：" + BoardCoordinates.FromGtp(result.BestMove, game.Size) + "。"));
             }
             catch (OperationCanceledException) { if (stamp == generation) SetStatus("已停止思考。"); }
             catch (Exception ex)
@@ -522,6 +590,8 @@ namespace GoDesk
         private void ClearAnalysis()
         {
             analysis = null; board.Analysis = null; board.ShowHints = false; board.ShowOwnership = false;
+            studyComparisonSummary = null;
+            if (variationLabel != null) { variationLabel.Text = ""; variationLabel.Visible = false; }
             hintButton.Text = "推荐着点"; scoreButton.Text = "形势 / 领地";
         }
         private void OnEngineStatus(int session, string text)
@@ -536,6 +606,13 @@ namespace GoDesk
         private void UpdateUi()
         {
             if (board == null) return;
+            if (studyRegionStatus != null)
+            {
+                studyRegionStatus.Text = board.SelectingRegion ? "请在棋盘上拖动框选；Esc 取消。" : studyRegion == null ? "全盘模式 · 可框选局部研究" : "局部 " + studyRegion.Describe(game.Size) + " · 双方限定应手\r\n" + (studyComparisonSummary ?? "保留全盘背景，评估为局部条件下估计。");
+                selectStudyButton.Text = board.SelectingRegion ? "取消框选" : studyRegion == null ? "框选局部" : "重新框选";
+                clearStudyButton.Enabled = studyRegion != null || board.SelectingRegion;
+                globalComparisonButton.Enabled = studyRegion != null && !thinking && !selfPlaying && !board.SelectingRegion;
+            }
             turnLabel.Text = game.IsOver ? "对局结束 · 连续停着" : (game.ToPlay == Stone.Black ? "●  黑方行棋" : "○  白方行棋") + (thinking ? "   /   思考中…" : "");
             gameInfoLabel.Text = game.Size + " 路  ·  " + (game.Rules == "japanese" ? "日本规则" : "中国规则") + "  ·  贴目 " + game.Komi.ToString("0.#", CultureInfo.InvariantCulture);
             if (game.InitialStones.Count > 0)
@@ -547,24 +624,39 @@ namespace GoDesk
             moveLabel.Text = "第 " + game.Position + " / " + game.Moves.Count + " 手";
             captureLabel.Text = "提子    黑 " + game.BlackCaptures + "    白 " + game.WhiteCaptures;
             if (game.Position < game.Moves.Count) captureLabel.Text += "    ·    当前处于复盘";
-            board.AllowInput = !thinking && !selfPlaying && !game.IsOver && HumanTurn;
-            board.Cursor = thinking ? Cursors.WaitCursor : board.AllowInput ? Cursors.Hand : Cursors.Default;
+            board.AllowInput = !thinking && !selfPlaying && !game.IsOver && HumanTurn && !board.SelectingRegion;
+            board.Cursor = board.SelectingRegion ? Cursors.Cross : thinking ? Cursors.WaitCursor : board.AllowInput ? Cursors.Hand : Cursors.Default;
             board.Invalidate();
-            aiButton.Enabled = !thinking && !selfPlaying && !game.IsOver; hintButton.Enabled = scoreButton.Enabled = !thinking && !selfPlaying;
-            selfPlayButton.Enabled = selfPlaying || (!thinking && !game.IsOver); selfPlayButton.Text = selfPlaying ? "停止自弈" : "AI 自弈";
-            passButton.Enabled = !thinking && !selfPlaying && !game.IsOver && HumanTurn; undoButton.Enabled = game.Position > 0;
+            aiButton.Enabled = !thinking && !selfPlaying && !game.IsOver && !board.SelectingRegion; hintButton.Enabled = scoreButton.Enabled = !thinking && !selfPlaying && !board.SelectingRegion;
+            selfPlayButton.Enabled = selfPlaying || (!thinking && !game.IsOver && !board.SelectingRegion); selfPlayButton.Text = selfPlaying ? "停止自弈" : "AI 自弈";
+            passButton.Enabled = !thinking && !selfPlaying && !game.IsOver && HumanTurn && !board.SelectingRegion; undoButton.Enabled = game.Position > 0;
             cancelButton.Visible = thinking || selfPlaying;
             cancelButton.Enabled = !stopping;
             cancelButton.Text = selfPlaying ? "停止自弈" : analysisWillPlay ? "结束思考并落子" : "结束分析";
             firstButton.Enabled = prevButton.Enabled = game.Position > 0;
             nextButton.Enabled = lastButton.Enabled = game.Position < game.Moves.Count;
-            hintButton.Text = board.ShowHints ? "隐藏推荐" : "推荐着点"; scoreButton.Text = board.ShowOwnership ? "隐藏领地" : "形势 / 领地";
+            hintButton.Text = board.ShowHints ? (studyRegion != null && analysis != null && analysis.Region == null ? "返回局部推荐" : "隐藏推荐") : "推荐着点"; scoreButton.Text = board.ShowOwnership ? "隐藏领地" : "形势 / 领地";
             if (analysis == null) { evaluationLabel.Text = "形势等待分析"; detailLabel.Text = "点击推荐着点，查看候选与胜率。"; }
             else
             {
-                evaluationLabel.Text = "黑方胜率  " + (analysis.BlackWinrate * 100).ToString("0.0") + "%";
+                evaluationLabel.Text = (analysis.Region != null ? "局部条件 · " : studyRegion != null ? "全局对比 · " : "") + "黑方胜率  " + (analysis.BlackWinrate * 100).ToString("0.0") + "%";
                 double lead = analysis.BlackScoreLead;
                 detailLabel.Text = (lead >= 0 ? "黑方领先 " : "白方领先 ") + Math.Abs(lead).ToString("0.0") + " 目  ·  " + analysis.Visits + " 次搜索\r\nAI 形势估计，非最终裁判结果。";
+            }
+            if (variationLabel != null)
+            {
+                variationLabel.Visible = analysis != null && analysis.Candidates != null && analysis.Candidates.Count > 0 && analysis.Candidates[0].Pv != null && analysis.Candidates[0].Pv.Length > 0;
+                if (variationLabel.Visible)
+                {
+                    StringBuilder variation = new StringBuilder("A 的变化：");
+                    string[] pv = analysis.Candidates[0].Pv;
+                    for (int i = 0; i < Math.Min(10, pv.Length); i++)
+                    {
+                        if (i > 0) variation.Append(" → ");
+                        variation.Append(BoardCoordinates.FromGtp(pv[i], game.Size));
+                    }
+                    variationLabel.Text = variation.ToString();
+                }
             }
             evaluationBar.Invalidate();
         }
@@ -631,11 +723,12 @@ namespace GoDesk
         }
         private void ShowHelp()
         {
-            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n分先时选择执白，AI 会先行；让子棋按实际先行方应手。选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n规则 / 设置中可选择黑让白或白让黑 0–9 子，确认后点新对局生效。\r\n1 子放天元，获得让子的一方先摆，对方先行。\r\n\r\n推荐着点：显示 A–E 候选。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n分先时选择执白，AI 会先行；让子棋按实际先行方应手。选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n规则 / 设置中可选择黑让白或白让黑 0–9 子，确认后点新对局生效。\r\n1 子放天元，获得让子的一方先摆，对方先行。\r\n\r\n框选局部：拖动选择研究区域，双方搜索与落子限定在框内。\r\n全局对比：仅分析全盘，保留研究框；退出局部恢复全盘对弈。\r\n显示手数：棋子上显示原始落子序号，开局预摆棋子不编号。\r\n局部推荐是限定条件下的估计，征子和劫争可能需要扩大范围。\r\n\r\n推荐着点：显示 A–E 候选及 A 的后续变化。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         private void OnShortcut(object sender, KeyEventArgs e)
         {
-            if (e.Control && e.KeyCode == Keys.O) { OpenSgf(); e.Handled = true; }
+            if (e.KeyCode == Keys.Escape && board.SelectingRegion) { board.SelectingRegion = false; UpdateUi(); SetStatus("已取消框选，保留原研究区域。"); e.Handled = true; }
+            else if (e.Control && e.KeyCode == Keys.O) { OpenSgf(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.S) { SaveSgf(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.N) { NewGame(); e.Handled = true; }
             else if (!(ActiveControl is ComboBox))

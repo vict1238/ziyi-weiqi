@@ -68,6 +68,8 @@ namespace GoDesk
             report.AppendLine("Stone volume dialog draft/cancel/confirm; checks stay muted and do not save preferences: PASS");
             int handicapChecks = await CheckHandicapGames(form, outputFolder);
             report.AppendLine("Bidirectional handicap settings draft/cancel/confirm, New Game, 0/1/2 stones, SGF save/load and both real AI first replies: PASS (" + handicapChecks + " assertions)");
+            int studyChecks = await CheckLocalStudyUiAsync(form, outputFolder);
+            report.AppendLine("Real forward/reverse study-region drags, original move numbers, local replies, global comparison and canceled-result isolation: PASS (" + studyChecks + " assertions)");
 
             Button hints = (Button)form.Controls.Find("BestHints", true)[0];
             hints.PerformClick(); await WaitIdle(form);
@@ -187,6 +189,258 @@ namespace GoDesk
                 Check(applied, "Custom depth dialog was not confirmed");
             }
             finally { timer.Dispose(); }
+        }
+
+        private static async Task<int> CheckLocalStudyUiAsync(MainForm form, string outputFolder)
+        {
+            int startedAssertions = assertionCount;
+            string originalSgf = form.CurrentGame.ToSgf();
+            int originalPosition = form.CurrentGame.Position;
+            var board = (BoardControl)form.Controls.Find("GoBoard", true)[0];
+            var numbers = (CheckBox)form.Controls.Find("ShowMoveNumbers", true)[0];
+            var automatic = (CheckBox)form.Controls.Find("AutomaticReply", true)[0];
+            var human = (ComboBox)form.Controls.Find("HumanColor", true)[0];
+            var size = (ComboBox)form.Controls.Find("BoardSize", true)[0];
+            var depth = (ComboBox)form.Controls.Find("SearchLevel", true)[0];
+            var select = (Button)form.Controls.Find("SelectStudyRegion", true)[0];
+            var clear = (Button)form.Controls.Find("ClearStudyRegion", true)[0];
+            var compare = (Button)form.Controls.Find("GlobalComparison", true)[0];
+            var hints = (Button)form.Controls.Find("BestHints", true)[0];
+            int oldHuman = human.SelectedIndex, oldSize = size.SelectedIndex, oldDepth = (int)Field(form, "selectedDepthIndex");
+            int oldHandicap = (int)Field(form, "handicap");
+            Stone oldRecipient = (Stone)Field(form, "handicapColor");
+            double oldKomi = (double)Field(form, "komi");
+            string oldRules = (string)Field(form, "rules");
+            bool oldAutomatic = automatic.Checked, oldNumbers = numbers.Checked, oldContinuous = (bool)Field(form, "continuousDepth");
+            long oldCustomVisits = (long)Field(form, "customVisits"), oldVisits = CurrentVisits(form);
+            object oldCustomLabel = depth.Items[SearchDepth.CustomIndex];
+            Size oldWindow = form.Size;
+            automatic.Checked = false;
+            const string numberedSgf = "(;SZ[9]KM[7.5]RU[Chinese]AB[hh]PL[B];B[aa];W[ba];B[];W[ab];B[cc];W[dd];B[ee])";
+            try
+            {
+                form.LoadGame(GoGame.FromSgf(numberedSgf));
+                string before = form.CurrentGame.ToSgf();
+                numbers.Checked = false;
+                Check(!board.ShowMoveNumbers && form.CurrentGame.ToSgf() == before, "Hiding move numbers changed the game or left board numbering enabled");
+                numbers.Checked = true;
+                Check(board.ShowMoveNumbers && form.CurrentGame.ToSgf() == before && form.CurrentGame.Position == 7, "Showing move numbers changed the game");
+                int[,] map = MoveNumbers.Build(form.CurrentGame);
+                Check(map[0, 0] == 0 && map[1, 0] == 2 && map[0, 1] == 4 && map[2, 2] == 5 && map[3, 3] == 6 && map[4, 4] == 7 && map[7, 7] == 0,
+                    "Board numbering lost original plies, pass gaps, captures or unnumbered initial stones");
+                Call(form, "Navigate", 2);
+                map = MoveNumbers.Build(form.CurrentGame);
+                Check(map[0, 0] == 1 && map[1, 0] == 2 && map[2, 2] == 0, "Review numbering includes future moves or loses a stone captured later");
+                Call(form, "Navigate", 7);
+                Check(numbers.Checked && board.ShowMoveNumbers && form.CurrentGame.ToSgf() == before, "Review changed the numbering toggle or retained SGF");
+                form.CaptureScreenshot(Path.Combine(outputFolder, "desktop-move-numbers.png"));
+
+                ConfigureDepth(form, "8", false, null);
+                select.PerformClick();
+                Check(board.SelectingRegion && !board.AllowInput && form.CurrentGame.ToSgf() == before,
+                    "Selecting a study region did not separate dragging from stone input");
+                DragStudyRegion(form, board, 0, 0, 3, 3, null);
+                var region = new StudyRegion(0, 0, 3, 3);
+                CheckSameRegion(board.StudyRegion, region, "Forward drag selected incorrect board coordinates");
+                CheckSameRegion((StudyRegion)Field(form, "studyRegion"), region, "Main window did not retain the board selection");
+                Check(!board.SelectingRegion && form.CurrentGame.ToSgf() == before && form.CurrentGame.Position == 7,
+                    "Finishing a study-region drag played a stone");
+                Check(board.Analysis == null && !(bool)Field(form, "thinking"), "Selecting a region unexpectedly started analysis or played a move");
+                Check(((Label)form.Controls.Find("StudyRegionStatus", true)[0]).Text.Contains(region.Describe(9)), "Study status does not identify the selected screen coordinates");
+                hints.PerformClick(); await WaitIdle(form);
+                CheckUiRestrictedAnalysis(board.Analysis, region, 9);
+                Check(form.CurrentGame.ToSgf() == before && board.ShowHints, "Local recommendation changed the game or did not display candidates");
+
+                form.Size = new Size(1000, 740); form.PerformLayout();
+                select.PerformClick();
+                DragStudyRegion(form, board, 3, 3, 0, 0, Path.Combine(outputFolder, "desktop-local-study-select-small.png"));
+                CheckSameRegion(board.StudyRegion, region, "Reverse drag did not normalize its endpoints");
+                Check(form.CurrentGame.ToSgf() == before && board.Analysis == null, "Reverse selection played a stone or retained old analysis");
+                form.Size = oldWindow; form.PerformLayout();
+                hints.PerformClick(); await WaitIdle(form);
+                CheckUiRestrictedAnalysis(board.Analysis, region, 9);
+                Check(((Label)form.Controls.Find("AnalysisVariation", true)[0]).Text.Length > 0, "Local recommendation has no displayed principal variation");
+                form.CaptureScreenshot(Path.Combine(outputFolder, "desktop-local-study.png"));
+
+                compare.PerformClick(); await WaitIdle(form);
+                Check(board.Analysis != null && board.Analysis.Region == null && form.CurrentGame.ToSgf() == before && form.CurrentGame.Position == 7,
+                    "Global comparison applied a move or retained a local restriction");
+                CheckSameRegion(board.StudyRegion, region, "Global comparison cleared the selected study frame");
+                CheckSameRegion((StudyRegion)Field(form, "studyRegion"), region, "Global comparison replaced the active local mode");
+                Check(hints.Text == "返回局部推荐", "Global comparison did not expose a direct return-to-local action");
+                hints.PerformClick(); await WaitIdle(form);
+                CheckUiRestrictedAnalysis(board.Analysis, region, 9);
+                Check(board.ShowHints && form.CurrentGame.ToSgf() == before && form.CurrentGame.Position == 7,
+                    "One return-to-local click merely hid hints, changed the game or failed to display local candidates");
+                CheckSameRegion(board.StudyRegion, region, "Returning to local recommendations changed the selected frame");
+
+                // Also exercise an AI move immediately following a global view,
+                // independently of the explicit return-to-local button above.
+                compare.PerformClick(); await WaitIdle(form);
+                Check(board.Analysis != null && board.Analysis.Region == null && form.CurrentGame.ToSgf() == before,
+                    "Repeated global comparison changed the game or kept the local result");
+                CheckSameRegion(board.StudyRegion, region, "Repeated global comparison cleared the active local frame");
+
+                ((Button)form.Controls.Find("AiPlay", true)[0]).PerformClick(); await WaitIdle(form);
+                Check(form.CurrentGame.Position == 8, "AI did not resume local play after global comparison");
+                Move played = form.CurrentGame.Moves[7];
+                Check(!played.IsPass && played.Color == Stone.White && region.Contains(played.X, played.Y), "AI move after comparison escaped the region or changed turn color");
+                CheckUiRestrictedAnalysis(board.Analysis, region, 9);
+                Check(MoveNumbers.Build(form.CurrentGame)[played.X, played.Y] == 8, "Local play restarted move numbering instead of keeping the original ply");
+
+                human.SelectedIndex = 0;
+                automatic.Checked = true;
+                Move humanMove = FindLegalRegionMove(form.CurrentGame, region);
+                ClickBoard(board, humanMove.X, humanMove.Y);
+                await WaitIdle(form);
+                Check(form.CurrentGame.Position == 10 && form.CurrentGame.Moves[8].Color == Stone.Black && form.CurrentGame.Moves[9].Color == Stone.White,
+                    "Local human move did not receive the actual automatic AI reply");
+                played = form.CurrentGame.Moves[9];
+                Check(!played.IsPass && region.Contains(played.X, played.Y) && MoveNumbers.Build(form.CurrentGame)[played.X, played.Y] == 10,
+                    "Automatic local reply escaped its frame or lost the original move number");
+                CheckUiRestrictedAnalysis(board.Analysis, region, 9);
+                string afterReply = form.CurrentGame.ToSgf();
+                AnalysisResult late = board.Analysis;
+                ClickBoard(board, 8, 8);
+                Check(form.CurrentGame.ToSgf() == afterReply && form.CurrentGame.Position == 10, "Human was allowed to leave the local study frame");
+                automatic.Checked = false;
+                human.SelectedIndex = 2;
+
+                // Selecting/canceling must retain the prior frame, while clearing
+                // must remove it. Neither action is a request to place a stone.
+                select.PerformClick();
+                select.PerformClick();
+                Check(!board.SelectingRegion && form.CurrentGame.ToSgf() == afterReply, "Canceling selection changed the game");
+                CheckSameRegion(board.StudyRegion, region, "Canceling selection discarded the committed frame");
+                ConfigureDepth(form, "1000000", true, null);
+                Task pending = (Task)Call(form, "AnalyzeAsync", true, false);
+                int staleStamp = (int)Field(form, "generation");
+                select.PerformClick();
+                await pending;
+                if (late != null) Call(form, "ShowAnalysisProgress", staleStamp, late, true, false);
+                Check(board.SelectingRegion && board.Analysis == null && form.CurrentGame.ToSgf() == afterReply,
+                    "Selecting during continuous local search accepted a stale move or analysis callback");
+                clear.PerformClick();
+                Check(board.StudyRegion == null && Field(form, "studyRegion") == null && !board.SelectingRegion && board.Analysis == null,
+                    "Exit local study did not clear selection mode, frame and stale analysis");
+                Check(form.CurrentGame.ToSgf() == afterReply && numbers.Checked, "Exiting local mode altered the game or numbering preference");
+
+                // New Game must clear a live local request; importing and an
+                // actual board-size change must also clear frame state.
+                select.PerformClick(); DragStudyRegion(form, board, 0, 0, 3, 3, null);
+                pending = (Task)Call(form, "AnalyzeAsync", true, false);
+                staleStamp = (int)Field(form, "generation");
+                ((Button)form.Controls.Find("NewGame", true)[0]).PerformClick();
+                await pending;
+                if (late != null) Call(form, "ShowAnalysisProgress", staleStamp, late, true, false);
+                Check(form.CurrentGame.Position == 0 && board.StudyRegion == null && Field(form, "studyRegion") == null && board.Analysis == null,
+                    "New Game accepted an old local result or kept its study frame");
+                Check(numbers.Checked && board.ShowMoveNumbers, "New Game reset the numbering preference");
+                select.PerformClick(); DragStudyRegion(form, board, 0, 0, 3, 3, null);
+                size.SelectedIndex = 1;
+                Check(form.CurrentGame.Size == 9 && board.StudyRegion != null, "Next-game board-size selection unexpectedly replaced the current board");
+                ((Button)form.Controls.Find("NewGame", true)[0]).PerformClick();
+                Check(form.CurrentGame.Size == 13 && board.StudyRegion == null && numbers.Checked, "Changing board size through New Game kept an obsolete frame or reset numbering");
+                select.PerformClick(); DragStudyRegion(form, board, 5, 5, 1, 1, null);
+                form.LoadGame(GoGame.FromSgf(numberedSgf));
+                Check(form.CurrentGame.Size == 9 && form.CurrentGame.Position == 7 && board.StudyRegion == null && Field(form, "studyRegion") == null && !board.SelectingRegion,
+                    "Import kept the previous board's region or selection gesture");
+                Check(numbers.Checked && board.ShowMoveNumbers, "Import reset the numbering preference");
+
+                ConfigureDepth(form, "8", false, null);
+                select.PerformClick(); DragStudyRegion(form, board, 1, 0, 1, 0, null);
+                string occupiedBefore = form.CurrentGame.ToSgf();
+                ((Button)form.Controls.Find("AiPlay", true)[0]).PerformClick(); await WaitIdle(form);
+                Check(form.CurrentGame.ToSgf() == occupiedBefore && board.Analysis == null && !(bool)Field(form, "thinking"),
+                    "An occupied single-point region fell back to a global AI move");
+                Check(((ToolStripStatusLabel)Field(form, "statusLabel")).Text.Contains("合法"), "Empty legal-region preflight did not explain why local analysis stopped");
+                clear.PerformClick();
+            }
+            finally
+            {
+                automatic.Checked = false;
+                Call(form, "CancelAnalysis");
+                GoGame restored = GoGame.FromSgf(originalSgf); restored.Goto(originalPosition);
+                form.LoadGame(restored);
+                SetField(form, "updating", true);
+                try
+                {
+                    SetField(form, "handicap", oldHandicap); SetField(form, "handicapColor", oldRecipient);
+                    SetField(form, "komi", oldKomi); SetField(form, "rules", oldRules);
+                    SetField(form, "customVisits", oldCustomVisits); SetField(form, "continuousDepth", oldContinuous);
+                    SetField(form, "selectedDepthIndex", oldDepth);
+                    depth.Items[SearchDepth.CustomIndex] = oldCustomLabel; depth.SelectedIndex = oldDepth;
+                    size.SelectedIndex = oldSize; human.SelectedIndex = oldHuman; automatic.Checked = oldAutomatic;
+                    numbers.Checked = oldNumbers; board.ShowMoveNumbers = oldNumbers;
+                    form.Size = oldWindow;
+                }
+                finally { SetField(form, "updating", false); }
+                Call(form, "UpdateUi");
+            }
+            Check(form.CurrentGame.ToSgf() == originalSgf && form.CurrentGame.Position == originalPosition && CurrentVisits(form) == oldVisits &&
+                board.StudyRegion == null && Field(form, "studyRegion") == null && numbers.Checked == oldNumbers,
+                "Local-study checks leaked game, depth, frame or numbering state into other UI checks");
+            return assertionCount - startedAssertions;
+        }
+
+        private static void DragStudyRegion(MainForm form, BoardControl board, int x1, int y1, int x2, int y2, string previewScreenshot)
+        {
+            ForcePaint(board);
+            Point start = BoardPixel(board, x1, y1), end = BoardPixel(board, x2, y2);
+            typeof(BoardControl).GetMethod("OnMouseDown", PrivateInstance).Invoke(board, new object[] { new MouseEventArgs(MouseButtons.Left, 1, start.X, start.Y, 0) });
+            typeof(BoardControl).GetMethod("OnMouseMove", PrivateInstance).Invoke(board, new object[] { new MouseEventArgs(MouseButtons.Left, 0, end.X, end.Y, 0) });
+            if (previewScreenshot != null) form.CaptureScreenshot(previewScreenshot);
+            typeof(BoardControl).GetMethod("OnMouseUp", PrivateInstance).Invoke(board, new object[] { new MouseEventArgs(MouseButtons.Left, 1, end.X, end.Y, 0) });
+            // Real WinForms mouse-up is followed by MouseClick. Check that the
+            // selection gesture suppresses that final event instead of placing a stone.
+            typeof(BoardControl).GetMethod("OnMouseClick", PrivateInstance).Invoke(board, new object[] { new MouseEventArgs(MouseButtons.Left, 1, end.X, end.Y, 0) });
+        }
+
+        private static Point BoardPixel(BoardControl board, int x, int y)
+        {
+            RectangleF grid = (RectangleF)Field(board, "grid");
+            float step = (float)Field(board, "step");
+            return new Point((int)Math.Round(grid.Left + x * step), (int)Math.Round(grid.Top + y * step));
+        }
+
+        private static void ClickBoard(BoardControl board, int x, int y)
+        {
+            ForcePaint(board);
+            Point point = BoardPixel(board, x, y);
+            typeof(BoardControl).GetMethod("OnMouseClick", PrivateInstance).Invoke(board, new object[] { new MouseEventArgs(MouseButtons.Left, 1, point.X, point.Y, 0) });
+        }
+
+        private static Move FindLegalRegionMove(GoGame game, StudyRegion region)
+        {
+            GoGame copy = GoGame.FromSgf(game.ToSgf()); copy.Goto(game.Position);
+            for (int y = region.Top; y <= region.Bottom; y++) for (int x = region.Left; x <= region.Right; x++)
+            {
+                string error;
+                if (copy.TryPlay(x, y, out error)) return new Move(x, y, game.ToPlay);
+            }
+            throw new InvalidOperationException("UI test region unexpectedly has no legal human move");
+        }
+
+        private static void CheckSameRegion(StudyRegion actual, StudyRegion expected, string message)
+        {
+            Check(actual != null && actual.Left == expected.Left && actual.Top == expected.Top && actual.Right == expected.Right && actual.Bottom == expected.Bottom, message);
+        }
+
+        private static void CheckUiRestrictedAnalysis(AnalysisResult result, StudyRegion expected, int size)
+        {
+            Check(result != null && result.Candidates != null && result.Candidates.Count > 0, "Local desktop analysis has no candidates");
+            CheckSameRegion(result.Region, expected, "Desktop local analysis belongs to a different or global region");
+            foreach (MoveCandidate candidate in result.Candidates)
+            {
+                Move move = GoGame.ParseGtp(candidate.Move, Stone.Black, size);
+                Check(!move.IsPass && expected.Contains(move.X, move.Y), "Desktop local candidate escaped its frame");
+                Check(candidate.Pv != null && candidate.Pv.Length > 0, "Desktop local candidate has no PV");
+                foreach (string coordinate in candidate.Pv)
+                {
+                    move = GoGame.ParseGtp(coordinate, Stone.Black, size);
+                    Check(!move.IsPass && expected.Contains(move.X, move.Y), "Desktop local PV escaped its frame or passed");
+                }
+            }
         }
 
         private static async Task<int> CheckHandicapGames(MainForm form, string outputFolder)

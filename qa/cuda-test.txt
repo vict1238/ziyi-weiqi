@@ -1,9 +1,12 @@
 ﻿PASS
 GPU profile: GPU · CUDA · tf3-b11c768 最强模型 · 2026-09-25（官方上传）
-19x19 real KataGo analysis + ownership + legal move: R4; 5.93s
+19x19 real KataGo analysis + ownership + legal move: R4; 6.00s
 9x9 SGF setup stones + initial player + legal move: G5
 9x9 White setup: initialStones=W x2, initialPlayer=B, AW + PL[B], 81 valid ownership values, legal Black first move: F6
 9x9 single Black setup: initialStones=B x1 at tengen, initialPlayer=W, 81 valid ownership values, legal White first move: C4
+9x9 local study A1–D4: Black and White legal moves; every candidate/PV coordinate restricted, no pass; full-board ownership x81: PASS
+Local -> global comparison -> local in one native process, independent result scopes and unchanged board: PASS
+Occupied single-point, suicide-only and out-of-bounds regions fail before native analysis; no global fallback; same engine remains usable: PASS
 Cancellation: PASS
 Engine remains usable after cancellation: E5
 Custom 3,000,000,000 visits accepted without integer overflow + live progress + cancel: PASS

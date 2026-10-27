@@ -22,6 +22,7 @@ namespace GoDesk
         public double ScoreLead { get; set; }
         public long Visits { get; set; }
         public int Order { get; set; }
+        public string[] Pv { get; set; }
     }
 
     public sealed class AnalysisResult
@@ -33,6 +34,7 @@ namespace GoDesk
         public List<MoveCandidate> Candidates { get; set; }
         // Row-major, top-left to bottom-right: +1 Black, -1 White.
         public double[] Ownership { get; set; }
+        public StudyRegion Region { get; set; }
     }
 
     public sealed class KataGoEngine : IDisposable
@@ -76,6 +78,7 @@ namespace GoDesk
                 new TaskCompletionSource<AnalysisResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             public int Size;
             public Action<AnalysisResult> Progress;
+            public StudyRegion Region;
         }
 
         public string Status { get { lock (sync) return status; } }
@@ -83,7 +86,7 @@ namespace GoDesk
         // Raised on a worker thread. Desktop consumers should marshal to their UI thread.
         public event Action<string> StatusChanged;
 
-        public async Task<AnalysisResult> AnalyzeAsync(GoGame game, long maxVisits, bool ownership, Action<AnalysisResult> progress = null)
+        public async Task<AnalysisResult> AnalyzeAsync(GoGame game, long maxVisits, bool ownership, Action<AnalysisResult> progress = null, StudyRegion region = null)
         {
             if (game == null) throw new ArgumentNullException("game");
             if (maxVisits < 0) throw new ArgumentOutOfRangeException("maxVisits", "搜索次数必须为正整数，或以 0 表示持续思考。");
@@ -99,6 +102,13 @@ namespace GoDesk
                 .Select(m => new string[] { Color(m.Color), m.ToGtp(size) }).ToArray();
             var initialStones = game.InitialStones
                 .Select(m => new string[] { Color(m.Color), m.ToGtp(size) }).ToArray();
+            StudyRegion requestRegion = region == null ? null : new StudyRegion(region.Left, region.Top, region.Right, region.Bottom);
+            if (requestRegion != null)
+            {
+                requestRegion.Validate(size);
+                if (!LocalStudy.HasLegalMove(game, requestRegion))
+                    throw new InvalidOperationException("研究范围内没有当前方可合法落子的交叉点，请扩大范围或切换全局分析。");
+            }
             int requestGeneration;
             int requestStopGeneration;
             lock (sync)
@@ -120,7 +130,8 @@ namespace GoDesk
                 { "maxVisits", maxVisits == 0 ? NativeContinuousVisits : maxVisits }, { "includeOwnership", ownership },
                 { "analysisPVLen", 10 }, { "reportDuringSearchEvery", 0.5 }
             };
-            var request = new PendingRequest { Size = size, Progress = progress };
+            if (requestRegion != null) query.Add("avoidMoves", LocalStudy.CreateAvoidMoves(size, requestRegion));
+            var request = new PendingRequest { Size = size, Progress = progress, Region = requestRegion };
             try
             {
                 lock (sync)
@@ -295,7 +306,19 @@ namespace GoDesk
                 {
                     if (source != process || disposed) return;
                     if (id == readyId && message.ContainsKey("version")) startup = readySignal;
-                    if (message.ContainsKey("warning")) return;
+                    if (message.ContainsKey("warning"))
+                    {
+                        PendingRequest warned;
+                        string warning = Text(message, "warning");
+                        string warningField = Text(message, "field");
+                        if (!pending.TryGetValue(id, out warned) || warned.Region == null ||
+                            (warningField != "avoidMoves" && warningField != "allowMoves" &&
+                            warning.IndexOf("avoidMoves", StringComparison.OrdinalIgnoreCase) < 0 && warning.IndexOf("allowMoves", StringComparison.OrdinalIgnoreCase) < 0)) return;
+                        // An older/custom engine may warn and ignore an unknown
+                        // query field. Never present such a search as local study.
+                        failure = new InvalidOperationException("此 KataGo 引擎未接受局部范围限制，已停止分析。请使用套件内置引擎，或主动切换全局分析。" + warning);
+                        TryTerminateLocked(id);
+                    }
                     if (message.ContainsKey("error"))
                     {
                         failure = new InvalidOperationException("KataGo：" + Text(message, "error"));
@@ -308,7 +331,7 @@ namespace GoDesk
                         }
                         if (id == readyId) startup = readySignal;
                     }
-                    partial = message.ContainsKey("isDuringSearch") && Convert.ToBoolean(message["isDuringSearch"], CultureInfo.InvariantCulture);
+                    partial = failure == null && message.ContainsKey("isDuringSearch") && Convert.ToBoolean(message["isDuringSearch"], CultureInfo.InvariantCulture);
                     if (pending.TryGetValue(id, out request))
                     {
                         if (!partial)
@@ -327,7 +350,7 @@ namespace GoDesk
                 {
                     if (failure == null && request.Progress != null && !request.Completion.Task.IsCompleted)
                     {
-                        result = ParseResult(message, request.Size);
+                        result = ParseResult(message, request.Size, request.Region);
                         try { request.Progress(result); } catch { /* Observers must not stop the native reader. */ }
                     }
                     return;
@@ -338,7 +361,7 @@ namespace GoDesk
                         request.Completion.TrySetCanceled();
                     else
                     {
-                        result = ParseResult(message, request.Size);
+                        result = ParseResult(message, request.Size, request.Region);
                         request.Completion.TrySetResult(result);
                     }
                 }
@@ -358,14 +381,15 @@ namespace GoDesk
                             TryTerminateLocked(responseId);
                         }
                     }
-                    request.Completion.TrySetException(new InvalidOperationException("无法读取 KataGo 分析结果。", ex));
-                    SetStatus("AI 分析结果读取失败，请重试");
+                    string explanation = request.Region == null ? "无法读取 KataGo 分析结果。" : "局部研究结果不符合范围要求，已停止本次分析；请扩大范围或切换全局分析。";
+                    request.Completion.TrySetException(new InvalidOperationException(explanation, ex));
+                    SetStatus(request.Region == null ? "AI 分析结果读取失败，请重试" : explanation);
                 }
                 else OnStderr(source, "协议读取错误：" + ex.Message);
             }
         }
 
-        private static AnalysisResult ParseResult(Dictionary<string, object> message, int size)
+        internal static AnalysisResult ParseResult(Dictionary<string, object> message, int size, StudyRegion region = null)
         {
             object rootObject;
             if (!message.TryGetValue("rootInfo", out rootObject)) throw new InvalidDataException("结果缺少 rootInfo。");
@@ -379,8 +403,17 @@ namespace GoDesk
                 {
                     var move = item as Dictionary<string, object>;
                     if (move == null) continue;
-                    candidates.Add(new MoveCandidate { Move = Text(move, "move"), Winrate = Number(move, "winrate"),
-                        ScoreLead = Number(move, "scoreLead"), Visits = Integer(move, "visits"), Order = (int)Number(move, "order") });
+                    object pvObject;
+                    string[] pv = move.TryGetValue("pv", out pvObject) ? ((IEnumerable)pvObject).Cast<object>()
+                        .Select(v => Convert.ToString(v, CultureInfo.InvariantCulture)).ToArray() : new string[0];
+                    var candidate = new MoveCandidate { Move = Text(move, "move"), Winrate = Number(move, "winrate"),
+                        ScoreLead = Number(move, "scoreLead"), Visits = Integer(move, "visits"), Order = (int)Number(move, "order"), Pv = pv };
+                    if (region != null)
+                    {
+                        ValidateLocalMove(candidate.Move, size, region);
+                        foreach (string coordinate in pv) ValidateLocalMove(coordinate, size, region);
+                    }
+                    candidates.Add(candidate);
                 }
             }
             candidates.Sort((a, b) => a.Order.CompareTo(b.Order));
@@ -396,7 +429,16 @@ namespace GoDesk
             }
             return new AnalysisResult { BestMove = candidates[0].Move, BlackWinrate = Number(root, "winrate"),
                 BlackScoreLead = Number(root, "scoreLead"), Visits = Integer(root, "visits"),
-                Candidates = candidates, Ownership = ownership };
+                Candidates = candidates, Ownership = ownership, Region = region };
+        }
+
+        private static void ValidateLocalMove(string coordinate, int size, StudyRegion region)
+        {
+            Move move;
+            try { move = GoGame.ParseGtp(coordinate, Stone.Black, size); }
+            catch (FormatException ex) { throw new InvalidDataException("局部研究返回了无法识别的着法。", ex); }
+            if (move.IsPass || !region.Contains(move.X, move.Y))
+                throw new InvalidDataException("局部研究返回了范围外着法或停一手，未采用该结果。");
         }
 
         private void OnStderr(Process source, string line)

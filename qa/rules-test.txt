@@ -5,3 +5,5 @@
 PASS 83 engine settings assertions (model migration, path portability, no preference writes).
 PASS 24 model catalog assertions (immutable IDs, dates, portable paths).
 落子音效检查通过：17 项断言（不播放可听音、不写偏好）。
+局部研究检查通过：70 项断言（范围、复盘前缀、禁入/劫、双边协议、候选/PV 校验）。
+棋子落子手数测试通过：216 项断言。
