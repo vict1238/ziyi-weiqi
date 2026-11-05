@@ -1,20 +1,20 @@
-﻿梓懿围棋 1.6
+梓懿围棋 1.7
 
 启动
 适用于 Windows 10 / 11 64 位、.NET Framework 4.8。
-已有v1.4.0完整GPU包，或已升级至v1.5.0：关闭程序，将v1.6.0升级包内文件解压到原“梓懿围棋.exe”所在目录，覆盖同名文件，再运行更新后的程序。保留相邻的cuda和gpu文件夹，无需重下引擎或模型。
-首次使用GPU：先下载并解压v1.4.0基础包，再将v1.6.0升级包内文件解压到同一程序目录并覆盖，最后双击“梓懿围棋.exe”。
+已有v1.4.0完整GPU包，或已升级至v1.5.0/v1.6.0：关闭程序，将v1.7.0升级包内文件解压到原“梓懿围棋.exe”所在目录，覆盖同名文件，再运行更新后的程序。保留相邻的cuda和gpu文件夹，无需重下引擎或模型。
+首次使用GPU：先下载并解压v1.4.0基础包，再将v1.7.0升级包内文件解压到同一程序目录并覆盖，最后双击“梓懿围棋.exe”。
 本版升级包更新主程序、说明与许可；CUDA/OpenCL引擎、运行库和两个GPU模型沿用v1.4.0基础包。
 NVIDIA 电脑优先使用 CUDA；配套运行库由基础包提供，无需安装完整 CUDA Toolkit，仍需兼容显卡和驱动。
 其他显卡可使用 OpenCL；首次加载新模型或棋盘尺寸时可能调优数分钟，界面显示启动状态并支持取消。
 CPU 单文件已内置 KataGo 1.14.1 与 g170 b10。引擎和模型准备好后，下棋可离线进行。
 
 下载
-v1.6.0发布页：https://github.com/vict1238/ziyi-weiqi/releases/tag/v1.6.0
-升级包：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.6.0/ziyi-weiqi-Windows-Update-v1.6.0.zip
-CPU单文件：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.6.0/ziyi-weiqi-v1.6.0.exe
-完整源码：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.6.0/ziyi-weiqi-source-v1.6.0.zip
-校验清单：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.6.0/SHA256SUMS.txt
+v1.7.0发布页：https://github.com/vict1238/ziyi-weiqi/releases/tag/v1.7.0
+升级包：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.7.0/ziyi-weiqi-Windows-Update-v1.7.0.zip
+CPU单文件：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.7.0/ziyi-weiqi-v1.7.0.exe
+完整源码：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.7.0/ziyi-weiqi-source-v1.7.0.zip
+校验清单：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.7.0/SHA256SUMS.txt
 v1.4.0 GPU基础包：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-Windows-CUDA-v1.4.0.zip
 
 引擎与模型
@@ -41,6 +41,19 @@ Windows 智能应用控制可能阻止未受信任的引擎；应用会提示错
 “AI落子”走当前一手；“推荐着点”显示A–E候选及A的变化，最多10步，较短变化按引擎实际返回显示；“形势 / 领地”显示胜率、目差和归属估计。
 “AI自弈”让AI替黑白行棋，再次点击停止。悔棋及导航可回看；回看后落子会覆盖后续原变化。
 双方连续停一手后结束。形势是AI估计，争议死活可悔棋后继续确认。
+
+截图与照片摆棋
+点击“截图 / 照片摆棋”或按Ctrl+I，选择图片、粘贴剪贴板图片或在屏幕上框选。支持软件棋盘、视频截图及实体棋盘照片。
+图像识别由本机CPU完成，可离线使用；研究着法继续使用现有KataGo引擎和模型。
+1. 确认全盘为19、13或9路；局部图片还需设置当前可见的列数、行数。
+2. 自动定位后核对格线。拖动原图四角，使其对准可见网格四角的交叉点；实体斜拍按透视网格校正。角点不是木框边缘。图片方向不合适时可旋转。
+3. 格线核对后点击“识别棋子”。对照原图与识别棋盘，用黑子、白子、擦除工具修改，支持撤销。可连续摆同一种颜色，修正时不按正常轮流落子或自动提子处理。橙圈位置请重点检查，灰色区域可手动补子。
+4. 局部图选择所在角边或起始列行，按真实位置放回完整棋盘。截图裁切处不是实际盘边；未拍到的盘外信息未知，在研究局面中先留空。
+5. 选择下一手黑或白，确认后导入新的初始局面，随后可研究、继续落子并保存SGF。取消保留原棋局。
+截图不能恢复落子顺序、先前提子数量和劫历史，导入棋子属于预摆棋子，不显示原始手数；之后实际落子再开始编号。
+源图坐标字母及行号方向可能与本程序不同，以网格位置、方向和所选局部锚点为准。
+拍照时尽量让交叉点清晰、棋子无遮挡。模糊、强反光、遮挡和大角度照片需校准并手动修正。
+局部题图可结合框选局部研究。全盘胜率和目差仅针对导入后搭建的局面；征子和劫争可能需要补充盘外棋子或扩大范围。
 
 局部研究
 1. 点击“框选局部”，按住左键在棋盘上拖出范围。框选不会落子；Esc取消本次框选并保留原研究框。
@@ -105,13 +118,13 @@ NVIDIA运行库适用随包的专有许可；应用MIT许可不替代NVIDIA条�
 源码构建
 在项目根目录依次运行 .\build.ps1、.\prepare-gpu.ps1、.\prepare-cuda.ps1。
 准备脚本固定官方下载版本并校验长度/SHA256，-SourceCache可复用缓存。
-输出为 release\梓懿围棋-v1.6.0，GPU文件位于相邻的gpu、cuda目录。无需额外NuGet包。
-.\build.ps1 -Checks执行规则、棋谱、坐标、局部研究、棋子手数、配置、声音及真实CPU检查。
+输出为 release\梓懿围棋-v1.7.0，GPU文件位于相邻的gpu、cuda目录。无需额外NuGet包。
+.\build.ps1 -Checks执行图像识别、透视、规则、棋谱、坐标、局部研究、棋子手数、配置、声音及真实CPU检查。
 桌面检查：--ui-test 报告路径；OpenCL检查：--gpu-test 报告路径；CUDA检查：--cuda-test 报告路径。
 GPU检查末尾可再传模型ID，选择旧b18。
 
 本版验证
-检查覆盖局部范围、当前复盘前缀、禁入与劫、双边搜索限制、候选与变化范围、全局对比及棋子手数，并保留双向让子和既有功能检查。
+检查覆盖图像网格与透视映射、黑白空识别、校准与修正、局部定位和初始摆子导入，并保留局部研究、棋子手数、双向让子及既有功能检查。
 具体断言数量、界面流程及真实CPU/CUDA引擎结果详见“验证记录.txt”。
 
 项目

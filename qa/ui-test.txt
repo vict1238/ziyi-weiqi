@@ -6,7 +6,7 @@ Board hit-test -> human display D16 -> actual KataGo reply; AI/history screen co
 Engine/model settings cancel + validation + profile swap keep game and user preferences: PASS
 Stone volume dialog draft/cancel/confirm; checks stay muted and do not save preferences: PASS
 Bidirectional handicap settings draft/cancel/confirm, New Game, 0/1/2 stones, SGF save/load and both real AI first replies: PASS (134 assertions)
-Real forward/reverse study-region drags, original move numbers, local replies, global comparison and canceled-result isolation: PASS (138 assertions)
+Real forward/reverse study-region drags, original move numbers, local replies, global comparison and canceled-result isolation: PASS (240 assertions)
 Best hints control + real candidates: PASS
 Score control + 361 ownership values: PASS
 Undo a human / AI pair: PASS
@@ -19,3 +19,6 @@ Japanese rules + 9x9 + large valid komi real engine: PASS
 Custom 3,000,000,000 via settings dialog -> real progress -> Stop and play: PASS
 Continuous setting -> live progress -> Stop and retain analysis: PASS
 Continuous cancellation + queued progress isolation after New Game: PASS
+
+图片导入：PASS（114 项；逐点预览、实际点击修正/擦除/撤销、透视校准失效、局部定位、白先、SGF、取消隔离、真实CPU分析、框选/Esc）。
+截屏完整模态与修正保留：PASS（25 项；合成屏幕、实际ESC与鼠标选区、模态等待、透明度恢复、区域移动／冲突／撤销、清除确认）。

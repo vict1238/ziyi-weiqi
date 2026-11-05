@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
@@ -92,13 +92,14 @@ namespace GoDesk
             file.DropDownItems.Add("新对局", null, delegate { NewGame(); });
             file.DropDownItems.Add("打开 SGF…", null, delegate { OpenSgf(); });
             file.DropDownItems.Add("保存 SGF…", null, delegate { SaveSgf(); });
+            file.DropDownItems.Add("截图 / 照片摆棋…", null, delegate { ImportBoardImage(); });
             file.DropDownItems.Add(new ToolStripSeparator());
             file.DropDownItems.Add("退出", null, delegate { Close(); });
             ToolStripMenuItem help = new ToolStripMenuItem("帮助(&H)");
             help.DropDownItems.Add("使用说明", null, delegate { ShowHelp(); });
             help.DropDownItems.Add("引擎 / 模型设置…", null, delegate { ShowEngineSettings(this); });
             help.DropDownItems.Add("第三方许可", null, delegate { Program.ShowLicenses(this); });
-            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.6\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nNVIDIA 显卡可使用 CUDA 加速，设置中可选择 CUDA、OpenCL 或 CPU。\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），保留旧模型与本地模型选择。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持局部研究、棋子手数、双向 0–9 子让子与 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
+            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.7\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nNVIDIA 显卡可使用 CUDA 加速，设置中可选择 CUDA、OpenCL 或 CPU。\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），保留旧模型与本地模型选择。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持截图 / 照片摆棋、局部研究、棋子手数、双向 0–9 子让子与 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
             menu.Items.Add(file); menu.Items.Add(help); MainMenuStrip = menu;
 
             Panel header = new Panel { Dock = DockStyle.Top, Height = 66, Padding = new Padding(26, 9, 24, 8), BackColor = Color.FromArgb(250, 249, 246) };
@@ -142,6 +143,7 @@ namespace GoDesk
             Button settings = MakeButton("规则 / 设置", 104, delegate { GameSettings(); }); settings.Location = new Point(160, 0); settings.Height = 30;
             boardRow.Controls.Add(sizeLabel); boardRow.Controls.Add(sizeBox); boardRow.Controls.Add(settings); side.Controls.Add(boardRow);
             Button newGameButton = MakeButton("新对局", 264, delegate { NewGame(); }); newGameButton.Name = "NewGame"; side.Controls.Add(newGameButton);
+            Button importImageButton = MakeButton("截图 / 照片摆棋…", 264, delegate { ImportBoardImage(); }); importImageButton.Name = "ImportBoardImage"; side.Controls.Add(importImageButton);
             Panel studyRow = new Panel { Width = 264, Height = 36, Margin = new Padding(0) };
             selectStudyButton = MakeButton("框选局部", 129, delegate { SelectStudyRegion(); }); selectStudyButton.Name = "SelectStudyRegion";
             clearStudyButton = MakeButton("退出局部", 129, delegate { ClearStudyRegion(); }); clearStudyButton.Name = "ClearStudyRegion"; clearStudyButton.Location = new Point(135, 0);
@@ -453,6 +455,25 @@ namespace GoDesk
             updating = true; sizeBox.SelectedIndex = game.Size == 13 ? 1 : game.Size == 9 ? 2 : 0; humanBox.SelectedIndex = 2; updating = false;
             ClearAnalysis(); board.Game = game; UpdateUi(); SetStatus((String.IsNullOrEmpty(game.ImportNotice) ? "" : game.ImportNotice + " ") + "棋谱已载入。用方向键复盘，或点击棋盘继续。");
         }
+        private void ImportBoardImage()
+        {
+            CancelAnalysis();
+            board.SelectingRegion = false;
+            using (var dialog = new ImageImportForm(komi, rules))
+                if (dialog.ShowDialog(this) == DialogResult.OK && dialog.ImportedGame != null)
+                    ImportImagePosition(dialog.ImportedGame, dialog.ImportedRegion);
+        }
+        internal void ImportImagePosition(GoGame position, StudyRegion region)
+        {
+            if (position == null) throw new ArgumentNullException("position");
+            if (region != null) region.Validate(position.Size);
+            LoadGame(position);
+            updating = true; automaticBox.Checked = false; updating = false;
+            studyRegion = region; board.StudyRegion = region;
+            ClearAnalysis(); UpdateUi();
+            SetStatus(region == null ? "图片局面已导入。可自由试下、保存棋谱或点击推荐着点；预摆棋子不编号。" :
+                "局部图片已导入并框选研究范围。未拍到的区域留空；可扩大研究框或补摆棋子后研究。");
+        }
         private async void MaybeAutoMove()
         {
             if (closing || thinking || selfPlaying || board.SelectingRegion || !automaticBox.Checked || humanBox.SelectedIndex == 2 || game.IsOver || HumanTurn) return;
@@ -652,7 +673,7 @@ namespace GoDesk
                 variationLabel.Visible = analysis != null && analysis.Candidates != null && analysis.Candidates.Count > 0 && analysis.Candidates[0].Pv != null && analysis.Candidates[0].Pv.Length > 0;
                 if (variationLabel.Visible)
                 {
-                    StringBuilder variation = new StringBuilder("A 的变化：");
+                    StringBuilder variation = new StringBuilder("下在 A 后的预测走法：");
                     string[] pv = analysis.Candidates[0].Pv;
                     for (int i = 0; i < Math.Min(10, pv.Length); i++)
                     {
@@ -727,7 +748,7 @@ namespace GoDesk
         }
         private void ShowHelp()
         {
-            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n分先时选择执白，AI 会先行；让子棋按实际先行方应手。选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n规则 / 设置中可选择黑让白或白让黑 0–9 子，确认后点新对局生效。\r\n1 子放天元，获得让子的一方先摆，对方先行。\r\n\r\n框选局部：拖动选择研究区域，双方搜索与落子限定在框内。\r\n全局对比：仅分析全盘，保留研究框；退出局部恢复全盘对弈。\r\n显示手数：棋子上显示原始落子序号，开局预摆棋子不编号。\r\n局部推荐是限定条件下的估计，征子和劫争可能需要扩大范围。\r\n\r\n推荐着点：显示 A–E 候选及 A 的后续变化。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n分先时选择执白，AI 会先行；让子棋按实际先行方应手。选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n规则 / 设置中可选择黑让白或白让黑 0–9 子，确认后点新对局生效。\r\n1 子放天元，获得让子的一方先摆，对方先行。\r\n\r\n框选局部：拖动选择研究区域，双方搜索与落子限定在框内。\r\n全局对比：仅分析全盘，保留研究框；退出局部恢复全盘对弈。\r\n显示手数：棋子上显示原始落子序号，开局预摆棋子不编号。\r\n局部推荐是限定条件下的估计，征子和劫争可能需要扩大范围。\r\n\r\n推荐着点：显示 A–E 候选及下在 A 后双方可能的走法。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\n截图 / 照片摆棋：选择图片、粘贴或框选屏幕；校准四角与可见格数，修正黑白子后导入。\r\n局部图需确认所在角边、下一手颜色；未拍到的区域留空，预摆棋子不编号。\r\n\r\nCtrl+I：截图 / 照片摆棋。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         private void OnShortcut(object sender, KeyEventArgs e)
         {
@@ -735,6 +756,7 @@ namespace GoDesk
             else if (e.Control && e.KeyCode == Keys.O) { OpenSgf(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.S) { SaveSgf(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.N) { NewGame(); e.Handled = true; }
+            else if (e.Control && e.KeyCode == Keys.I) { ImportBoardImage(); e.Handled = true; }
             else if (!(ActiveControl is ComboBox))
             {
                 if (e.KeyCode == Keys.Left) { Navigate(game.Position - 1); e.Handled = true; }

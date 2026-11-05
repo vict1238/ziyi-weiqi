@@ -1,0 +1,28 @@
+PASS
+梓懿围棋 v1.7.0 图片识别与摆棋验收（2026-11-05）
+最终程序 SHA256: 3509ebd62f925b37d5caf01ee621efa8467c4bd74c16870c03d65c9ecf38df64
+由外部只读验证器直接引用此最终 EXE 中的识别代码，与独立人工标注逐点比较。
+三张用户截图与一张实体十三路照片：手动校准后 790/790；自动定位后 790/790。
+此结果仅表示四个核对样本，不作为任意图片准确率承诺。用户图片和照片原图均未加入仓库或发布包。
+
+user-full-video calibrated 361/361 uncertain 1 B=69 W=71
+user-full-video AUTO CORRECT 361/361
+user-full-video AUTO 19x19 {X=78.87867, Y=587.746} {X=1125.863, Y=1630.5}
+user-partial-13x11 calibrated 143/143 uncertain 0 B=15 W=12
+user-partial-13x11 AUTO CORRECT 143/143
+user-partial-13x11 AUTO 13x11 {X=213.4522, Y=124.5686} {X=1073.711, Y=841.4451}
+user-partial-9x13 calibrated 117/117 uncertain 0 B=18 W=13
+user-partial-9x13 AUTO CORRECT 117/117
+user-partial-9x13 AUTO 9x13 {X=220.0453, Y=149.7512} {X=941.2746, Y=1227.854}
+real-photo-13x13 calibrated 169/169 uncertain 1 B=17 W=17
+real-photo-13x13 AUTO CORRECT 169/169
+real-photo-13x13 AUTO 13x13 {X=132.8328, Y=202.7371} {X=1099.058, Y=611.2272}
+
+界面验收：114 项图片导入检查及25项完整模态截屏/手工修正保留检查通过。
+包含实际点击黑白/擦除/撤销、无气棋块拒绝、校准结果过期隔离、局部映射、移动与冲突、白先、SGF往返、关闭取消原局保留，以及导入后的真实 CPU 局部分析。
+完整截屏回归使用合成屏幕输入覆盖实际模态窗、鼠标框选和Esc，避免保存私人桌面。
+另通过Computer Use实机打开主入口和导入窗口；点屏幕框选时工具报告“foreground window did not report a process id”，恢复时报告“window id was not found”，未将该实机点按记为通过，未保存或发布私人屏幕。
+真实 CUDA 及 CPU 原有引擎、初始摆子、局部/全局、取消复用检查通过；本次未重测 CUDA/OpenCL 性能对比。
+实体照片来源：Dietmar Rabich / Wikimedia Commons / CC BY-SA 4.0
+https://commons.wikimedia.org/wiki/File:Go_(13%C3%9713)_--_2021_--_6737.jpg
+照片仅用于本机验收，发布内容不含照片或其预览。
