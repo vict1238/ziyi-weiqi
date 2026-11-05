@@ -10,10 +10,10 @@ using System.Windows.Forms;
 
 namespace GoDesk
 {
-    public class MainForm : Form
+    public partial class MainForm : Form
     {
         internal const string Tribute = "致敬六大至尊围棋王“梓”和“懿”";
-        private readonly Color ink = Color.FromArgb(39, 48, 51), muted = Color.FromArgb(111, 119, 119), green = Color.FromArgb(41, 113, 99);
+        private readonly Color ink = UiTheme.Text, muted = UiTheme.Muted, green = UiTheme.Accent;
         private readonly ToolTip tooltips = new ToolTip();
         private GoGame game;
         private KataGoEngine engine;
@@ -66,17 +66,19 @@ namespace GoDesk
             selectedDepthIndex = SearchDepth.DefaultIndex(engineSettings.IsGpu);
             Text = "梓懿围棋 · KataGo";
             try { Icon = Icon.ExtractAssociatedIcon(System.Reflection.Assembly.GetExecutingAssembly().Location); } catch { }
-            AutoScaleMode = AutoScaleMode.Dpi;
+            SuspendLayout();
+            AutoScaleMode = AutoScaleMode.None;
             AutoScaleDimensions = new SizeF(96, 96);
             MinimumSize = new Size(1000, 740);
-            Size = new Size(1180, 850);
+            Size = new Size(1320, 900);
             StartPosition = FormStartPosition.CenterScreen;
-            BackColor = Color.FromArgb(242, 240, 234);
+            BackColor = UiTheme.Background;
             ForeColor = ink;
             Font = new Font("Microsoft YaHei UI", 9f);
             KeyPreview = true;
             game = new GoGame(19, komi);
             BuildUi();
+            UiTheme.FinishDpiLayout(this, new Size(1320, 900));
             if (settingsError == null) InstallEngine(engineSettings);
             else { UpdateEngineDescription(); engineLabel.Text = "引擎设置需要确认"; SetStatus(settingsError); }
             UpdateUi();
@@ -85,130 +87,7 @@ namespace GoDesk
             KeyDown += OnShortcut;
         }
 
-        private void BuildUi()
-        {
-            MenuStrip menu = new MenuStrip { BackColor = Color.FromArgb(250, 249, 246), ForeColor = ink, Padding = new Padding(14, 3, 0, 3) };
-            ToolStripMenuItem file = new ToolStripMenuItem("棋谱(&F)");
-            file.DropDownItems.Add("新对局", null, delegate { NewGame(); });
-            file.DropDownItems.Add("打开 SGF…", null, delegate { OpenSgf(); });
-            file.DropDownItems.Add("保存 SGF…", null, delegate { SaveSgf(); });
-            file.DropDownItems.Add("截图 / 照片摆棋…", null, delegate { ImportBoardImage(); });
-            file.DropDownItems.Add(new ToolStripSeparator());
-            file.DropDownItems.Add("退出", null, delegate { Close(); });
-            ToolStripMenuItem help = new ToolStripMenuItem("帮助(&H)");
-            help.DropDownItems.Add("使用说明", null, delegate { ShowHelp(); });
-            help.DropDownItems.Add("引擎 / 模型设置…", null, delegate { ShowEngineSettings(this); });
-            help.DropDownItems.Add("第三方许可", null, delegate { Program.ShowLicenses(this); });
-            help.DropDownItems.Add("关于梓懿围棋", null, delegate { MessageBox.Show(this, "梓懿围棋 1.7\r\n\r\n" + Tribute + "\r\n\r\n原生 Windows 围棋对弈与复盘工具。\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\nNVIDIA 显卡可使用 CUDA 加速，设置中可选择 CUDA、OpenCL 或 CPU。\r\nGPU 套件默认使用 tf3-b11c768 最强模型（2026-09-25），保留旧模型与本地模型选择。\r\n搜索次数表示计算量，例如 4096 次访问；不是向后推演 4096 手，也不对应人类段位。\r\n支持截图 / 照片摆棋、局部研究、棋子手数、双向 0–9 子让子与 SGF 棋谱。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information); });
-            menu.Items.Add(file); menu.Items.Add(help); MainMenuStrip = menu;
-
-            Panel header = new Panel { Dock = DockStyle.Top, Height = 66, Padding = new Padding(26, 9, 24, 8), BackColor = Color.FromArgb(250, 249, 246) };
-            Label title = new Label { Text = "梓懿围棋", AutoSize = true, Location = new Point(24, 12), Font = new Font("Microsoft YaHei UI", 20, FontStyle.Bold), ForeColor = ink };
-            Label subtitle = new Label { Text = "KataGo  /  本地对弈与复盘", AutoSize = true, Location = new Point(197, 28), ForeColor = muted, Font = new Font("Microsoft YaHei UI", 10) };
-            Label local = new Label { Dock = DockStyle.Right, Width = 178, Text = "●  本地引擎 · 独立运行", TextAlign = ContentAlignment.MiddleRight, ForeColor = green };
-            header.Controls.Add(title); header.Controls.Add(subtitle); header.Controls.Add(local);
-
-            TableLayoutPanel body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Padding = new Padding(18, 10, 20, 9) };
-            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 306));
-            Panel left = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0, 0, 14, 0) };
-            Panel boardHeader = new Panel { Dock = DockStyle.Top, Height = 34, Padding = new Padding(13, 0, 12, 0) };
-            turnLabel = new Label { Dock = DockStyle.Left, Width = 210, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
-            gameInfoLabel = new Label { Name = "GameInfo", Dock = DockStyle.Right, Width = 350, TextAlign = ContentAlignment.MiddleRight, ForeColor = muted };
-            boardHeader.Controls.Add(turnLabel); boardHeader.Controls.Add(gameInfoLabel);
-            Panel footer = new Panel { Dock = DockStyle.Bottom, Height = 76, Padding = new Padding(12, 5, 12, 0) };
-            FlowLayoutPanel navigation = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 37, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
-            firstButton = NavButton("|◀", "首手", delegate { Navigate(0); });
-            prevButton = NavButton("◀", "上一手", delegate { Navigate(game.Position - 1); });
-            nextButton = NavButton("▶", "下一手", delegate { Navigate(game.Position + 1); });
-            lastButton = NavButton("▶|", "末手", delegate { Navigate(game.Moves.Count); });
-            moveLabel = new Label { Width = 150, Height = 32, TextAlign = ContentAlignment.MiddleCenter, ForeColor = ink };
-            navigation.Controls.Add(firstButton); navigation.Controls.Add(prevButton); navigation.Controls.Add(moveLabel); navigation.Controls.Add(nextButton); navigation.Controls.Add(lastButton);
-            captureLabel = new Label { Dock = DockStyle.Bottom, Height = 25, TextAlign = ContentAlignment.MiddleLeft, ForeColor = muted };
-            footer.Controls.Add(navigation); footer.Controls.Add(captureLabel);
-            board = new BoardControl { Dock = DockStyle.Fill, Name = "GoBoard", Game = game };
-            board.PointClicked += OnBoardPoint;
-            board.RegionSelected += OnStudyRegionSelected;
-            left.Controls.Add(board); left.Controls.Add(boardHeader); left.Controls.Add(footer);
-
-            Panel sideHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(250, 249, 246), Padding = new Padding(15, 14, 15, 10), AutoScroll = true };
-            FlowLayoutPanel side = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Width = 269, Location = new Point(15, 14) };
-            side.Controls.Add(SectionTitle("对局设置"));
-            humanBox = Combo(new string[] { "执黑 · Black", "执白 · White", "双方 · 自由复盘" }); humanBox.Name = "HumanColor";
-            humanBox.SelectedIndexChanged += delegate { if (!updating) { CancelAnalysis(); UpdateUi(); MaybeAutoMove(); } };
-            side.Controls.Add(Field("你的执子", humanBox));
-            sizeBox = Combo(new string[] { "19 路", "13 路", "9 路" }); sizeBox.Name = "BoardSize";
-            Panel boardRow = new Panel { Width = 264, Height = 38, Margin = new Padding(0, 0, 0, 3) };
-            Label sizeLabel = new Label { Text = "棋盘", Width = 63, Height = 30, TextAlign = ContentAlignment.MiddleLeft, ForeColor = muted };
-            sizeBox.Location = new Point(65, 1); sizeBox.Width = 89;
-            Button settings = MakeButton("规则 / 设置", 104, delegate { GameSettings(); }); settings.Location = new Point(160, 0); settings.Height = 30;
-            boardRow.Controls.Add(sizeLabel); boardRow.Controls.Add(sizeBox); boardRow.Controls.Add(settings); side.Controls.Add(boardRow);
-            Button newGameButton = MakeButton("新对局", 264, delegate { NewGame(); }); newGameButton.Name = "NewGame"; side.Controls.Add(newGameButton);
-            Button importImageButton = MakeButton("截图 / 照片摆棋…", 264, delegate { ImportBoardImage(); }); importImageButton.Name = "ImportBoardImage"; side.Controls.Add(importImageButton);
-            Panel studyRow = new Panel { Width = 264, Height = 36, Margin = new Padding(0) };
-            selectStudyButton = MakeButton("框选局部", 129, delegate { SelectStudyRegion(); }); selectStudyButton.Name = "SelectStudyRegion";
-            clearStudyButton = MakeButton("退出局部", 129, delegate { ClearStudyRegion(); }); clearStudyButton.Name = "ClearStudyRegion"; clearStudyButton.Location = new Point(135, 0);
-            studyRow.Controls.Add(selectStudyButton); studyRow.Controls.Add(clearStudyButton); side.Controls.Add(studyRow);
-            Panel studyOptions = new Panel { Width = 264, Height = 36, Margin = new Padding(0) };
-            globalComparisonButton = MakeButton("全局对比", 129, async delegate { await CompareGloballyAsync(); }); globalComparisonButton.Name = "GlobalComparison";
-            moveNumbersBox = new CheckBox { Name = "ShowMoveNumbers", Text = "显示手数", Location = new Point(141, 4), Width = 123, Height = 27 };
-            moveNumbersBox.CheckedChanged += delegate { board.ShowMoveNumbers = moveNumbersBox.Checked; };
-            studyOptions.Controls.Add(globalComparisonButton); studyOptions.Controls.Add(moveNumbersBox); side.Controls.Add(studyOptions);
-            studyRegionStatus = new Label { Name = "StudyRegionStatus", Width = 264, Height = 36, ForeColor = muted, Margin = new Padding(0, 0, 0, 3), Font = new Font("Microsoft YaHei UI", 8) };
-            side.Controls.Add(studyRegionStatus);
-            tooltips.SetToolTip(selectStudyButton, "在棋盘上按住左键拖动框选。双方推演和实际落子限制在框内，保留全盘棋子作为背景。");
-            tooltips.SetToolTip(globalComparisonButton, "仅做一次全盘分析，不自动落子，也不清除研究框；下一次局部分析仍使用原区域。");
-            tooltips.SetToolTip(moveNumbersBox, "在现存棋子上显示原始落子手数；停着占手数，开局预摆棋子不编号。");
-            side.Controls.Add(Divider());
-            side.Controls.Add(SectionTitle("KataGo"));
-            engineLabel = new Label { Width = 264, Height = 43, Text = "○  引擎待命\r\n首次分析时加载模型", ForeColor = muted, AutoEllipsis = true, Margin = new Padding(0, 0, 0, 5) };
-            side.Controls.Add(engineLabel);
-            Panel profileRow = new Panel { Width = 264, Height = 36, Margin = new Padding(0, 0, 0, 3) };
-            profileLabel = new Label { Name = "EngineProfile", Location = new Point(0, 0), Width = 195, Height = 30, TextAlign = ContentAlignment.MiddleLeft, ForeColor = muted, AutoEllipsis = true, Font = new Font("Microsoft YaHei UI", 8) };
-            Button engineSettingsButton = MakeButton("设置…", 63, delegate { ShowEngineSettings(this); }); engineSettingsButton.Name = "EngineSettings"; engineSettingsButton.Location = new Point(201, 0); engineSettingsButton.Height = 30;
-            profileRow.Controls.Add(profileLabel); profileRow.Controls.Add(engineSettingsButton); side.Controls.Add(profileRow);
-            difficultyBox = Combo(SearchDepth.Choices()); difficultyBox.SelectedIndex = selectedDepthIndex; difficultyBox.Name = "SearchLevel";
-            difficultyBox.DropDownWidth = 340;
-            difficultyBox.SelectedIndexChanged += delegate { if (!updating && difficultyBox.SelectedIndex >= 0 && difficultyBox.SelectedIndex != SearchDepth.CustomIndex) selectedDepthIndex = difficultyBox.SelectedIndex; };
-            difficultyBox.SelectionChangeCommitted += OnDepthSelected;
-            tooltips.SetToolTip(difficultyBox, "GPU 默认 2048 次；更高搜索量需要更多等待时间。选择自定义可输入其他次数，或持续思考直到手动停止。");
-            side.Controls.Add(Field("计算深度", difficultyBox));
-            automaticBox = new CheckBox { Text = "AI 自动应手", Checked = true, Width = 264, Height = 27, Margin = new Padding(0, 0, 0, 4), ForeColor = ink, Name = "AutomaticReply" };
-            automaticBox.CheckedChanged += delegate { if (!updating) { if (automaticBox.Checked) MaybeAutoMove(); else if (thinking) CancelAnalysis(); } };
-            side.Controls.Add(automaticBox);
-            Panel aiRow = new Panel { Width = 264, Height = 39, Margin = new Padding(0) };
-            aiButton = MakeButton("AI 落子", 169, async delegate { await AnalyzeAsync(true, false); }); aiButton.Name = "AiPlay"; aiButton.BackColor = green; aiButton.ForeColor = Color.White; aiButton.FlatAppearance.BorderColor = green;
-            selfPlayButton = MakeButton("AI 自弈", 89, async delegate { await ToggleSelfPlayAsync(); }); selfPlayButton.Name = "SelfPlay"; selfPlayButton.Location = new Point(175, 0);
-            aiRow.Controls.Add(aiButton); aiRow.Controls.Add(selfPlayButton); side.Controls.Add(aiRow);
-            Panel analysisRow = new Panel { Width = 264, Height = 39, Margin = new Padding(0) };
-            hintButton = MakeButton("推荐着点", 129, async delegate { if (analysis != null && board.ShowHints && !(studyRegion != null && analysis.Region == null)) { board.ShowHints = false; hintButton.Text = "推荐着点"; } else await AnalyzeAsync(false, false); }); hintButton.Name = "BestHints"; hintButton.Location = new Point(0, 0);
-            scoreButton = MakeButton("形势 / 领地", 129, async delegate { if (analysis != null && board.ShowOwnership) { board.ShowOwnership = false; scoreButton.Text = "形势 / 领地"; } else await AnalyzeAsync(false, true); }); scoreButton.Name = "Score"; scoreButton.Location = new Point(135, 0);
-            analysisRow.Controls.Add(hintButton); analysisRow.Controls.Add(scoreButton); side.Controls.Add(analysisRow);
-            cancelButton = MakeButton("结束思考", 264, delegate { StopThinking(); }); cancelButton.Name = "StopThinking"; cancelButton.Visible = false; side.Controls.Add(cancelButton);
-            evaluationLabel = new Label { Width = 264, Height = 27, Text = "形势等待分析", ForeColor = ink, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 4, 0, 0) };
-            evaluationBar = new Panel { Width = 264, Height = 8, Margin = new Padding(0, 0, 0, 5), BackColor = Color.FromArgb(226, 226, 221) };
-            evaluationBar.Paint += PaintEvaluation;
-            detailLabel = new Label { Width = 264, Height = 41, Text = "点击推荐着点，查看候选与胜率。", ForeColor = muted, AutoEllipsis = true, Margin = new Padding(0, 0, 0, 5) };
-            side.Controls.Add(evaluationLabel); side.Controls.Add(evaluationBar); side.Controls.Add(detailLabel);
-            variationLabel = new Label { Name = "AnalysisVariation", Width = 264, Height = 56, ForeColor = muted, Visible = false, Margin = new Padding(0, 0, 0, 4), Font = new Font("Microsoft YaHei UI", 8) };
-            side.Controls.Add(variationLabel);
-            side.Controls.Add(Divider());
-            Panel playRow = new Panel { Width = 264, Height = 39, Margin = new Padding(0) };
-            passButton = MakeButton("停一手", 129, delegate { PassMove(); }); passButton.Name = "Pass";
-            undoButton = MakeButton("悔棋", 129, delegate { UndoMove(); }); undoButton.Name = "Undo"; undoButton.Location = new Point(135, 0);
-            playRow.Controls.Add(passButton); playRow.Controls.Add(undoButton); side.Controls.Add(playRow);
-            Panel sgfRow = new Panel { Width = 264, Height = 39, Margin = new Padding(0) };
-            Button open = MakeButton("打开棋谱", 129, delegate { OpenSgf(); }); open.Name = "OpenSgf";
-            Button save = MakeButton("保存棋谱", 129, delegate { SaveSgf(); }); save.Name = "SaveSgf"; save.Location = new Point(135, 0);
-            sgfRow.Controls.Add(open); sgfRow.Controls.Add(save); side.Controls.Add(sgfRow);
-            Label note = new Label { Width = 264, Height = 38, Text = "橙环标记上一手  ·  A–E 为推荐着点\r\n方向键复盘  ·  Ctrl+O / Ctrl+S 棋谱", ForeColor = muted, Font = new Font("Microsoft YaHei UI", 8), Margin = new Padding(0, 6, 0, 0) }; side.Controls.Add(note);
-            sideHost.Controls.Add(side);
-            body.Controls.Add(left, 0, 0); body.Controls.Add(sideHost, 1, 0);
-
-            StatusStrip status = new StatusStrip { BackColor = Color.FromArgb(250, 249, 246), SizingGrip = true, Padding = new Padding(19, 0, 15, 0) };
-            statusLabel = new ToolStripStatusLabel("在棋盘上点击落子。首次 AI 思考可能需要数秒加载。") { Spring = true, TextAlign = ContentAlignment.MiddleLeft, ForeColor = muted };
-            status.Items.Add(statusLabel);
-            Controls.Add(body); Controls.Add(header); Controls.Add(menu); Controls.Add(status);
-        }
+        private void BuildUi() { BuildDesignedUi(); }
 
         private Label SectionTitle(string text) { return new Label { Text = text, Width = 264, Height = 29, Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold), Margin = new Padding(0), ForeColor = ink }; }
         private Panel Divider() { return new Panel { Width = 264, Height = 1, BackColor = Color.FromArgb(225, 225, 218), Margin = new Padding(0, 8, 0, 11) }; }
@@ -225,7 +104,7 @@ namespace GoDesk
         }
         private Button MakeButton(string text, int width, EventHandler action)
         {
-            Button b = new Button { Text = text, Width = width, Height = 33, FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = ink, Cursor = Cursors.Hand, Margin = new Padding(0, 0, 0, 6), UseVisualStyleBackColor = false };
+            Button b = new WarmButton { Text = text, Width = width, Height = 28, FlatStyle = FlatStyle.Flat, BackColor = Color.White, ForeColor = ink, Cursor = Cursors.Hand, Margin = new Padding(0, 0, 0, 6), UseVisualStyleBackColor = false };
             b.FlatAppearance.BorderColor = Color.FromArgb(211, 215, 210); b.FlatAppearance.MouseOverBackColor = Color.FromArgb(233, 240, 236); b.Click += action; return b;
         }
         private Button NavButton(string text, string tooltip, EventHandler action)
@@ -235,7 +114,7 @@ namespace GoDesk
         }
 
         private Stone HumanColor { get { return humanBox.SelectedIndex == 1 ? Stone.White : Stone.Black; } }
-        private bool HumanTurn { get { return humanBox.SelectedIndex == 2 || game.ToPlay == HumanColor; } }
+        private bool HumanTurn { get { return reviewMode || humanBox.SelectedIndex == 2 || game.ToPlay == HumanColor; } }
         private long Visits { get { return selectedDepthIndex == SearchDepth.CustomIndex ? (continuousDepth ? 0 : customVisits) : SearchDepth.PresetVisits(selectedDepthIndex); } }
 
         private void InstallEngine(EngineSettings profile)
@@ -248,6 +127,7 @@ namespace GoDesk
                 if (engineStatusHandler != null) engine.StatusChanged -= engineStatusHandler;
                 engine.Dispose();
             }
+            analysisTimeline.Clear();
             engine = replacement;
             engineSettings = profile.Clone();
             engineStatusHandler = delegate(string text) { OnEngineStatus(session, text); };
@@ -273,7 +153,7 @@ namespace GoDesk
 
         private bool ShowEngineSettings(IWin32Window owner)
         {
-            using (Form dialog = new Form { Name = "EngineModelSettings", Text = "引擎 / 模型设置", ClientSize = new Size(710, 502), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
+            using (Form dialog = new Form { AutoScaleMode = AutoScaleMode.None, Name = "EngineModelSettings", Text = "引擎 / 模型设置", ClientSize = new Size(710, 502), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
             {
                 Label backendLabel = new Label { Text = "计算后端", Location = new Point(22, 23), Size = new Size(100, 27) };
                 ComboBox backend = Combo(new string[] { "CPU · 内置便携引擎", EngineSettings.CudaBackendDescription + " · NVIDIA 显卡", EngineSettings.GpuBackendDescription + " · 通用显卡", "自定义 · 本地 KataGo" }); backend.Name = "EngineBackend"; backend.Location = new Point(128, 19); backend.Width = 560;
@@ -355,7 +235,7 @@ namespace GoDesk
                 Button cancel = MakeButton("取消", 88, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "EngineSettingsCancel"; cancel.Location = new Point(502, 455);
                 dialog.Controls.AddRange(new Control[] { backendLabel, backend, executableLabel, executable, browseEngine, modelLabel, modelChoice, modelDetails, modelPathLabel, model, browseModel, explanation, error, ok, cancel });
                 dialog.AcceptButton = ok; dialog.CancelButton = cancel;
-                return dialog.ShowDialog(owner) == DialogResult.OK;
+                return ShowStyledDialog(dialog, owner) == DialogResult.OK;
             }
         }
 
@@ -371,7 +251,7 @@ namespace GoDesk
 
         private bool ShowDepthSettings(IWin32Window owner)
         {
-            using (Form dialog = new Form { Name = "SearchDepthSettings", Text = "计算深度设置", ClientSize = new Size(442, 312), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
+            using (Form dialog = new Form { AutoScaleMode = AutoScaleMode.None, Name = "SearchDepthSettings", Text = "计算深度设置", ClientSize = new Size(442, 312), FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, ShowInTaskbar = false, Font = Font, BackColor = BackColor })
             {
                 Label modeLabel = new Label { Text = "计算深度", Location = new Point(22, 21), Size = new Size(90, 27) };
                 ComboBox mode = Combo(SearchDepth.Choices()); mode.Name = "DepthMode"; mode.Location = new Point(118, 18); mode.Width = 300; mode.SelectedIndex = difficultyBox.SelectedIndex;
@@ -400,7 +280,7 @@ namespace GoDesk
                 }); ok.Name = "DepthOK"; ok.Location = new Point(330, 269);
                 Button cancel = MakeButton("取消", 88, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "DepthCancel"; cancel.Location = new Point(232, 269);
                 dialog.Controls.AddRange(new Control[] { modeLabel, mode, countLabel, count, continuous, note, errorLabel, ok, cancel }); dialog.AcceptButton = ok; dialog.CancelButton = cancel;
-                bool applied = dialog.ShowDialog(owner) == DialogResult.OK;
+                bool applied = ShowStyledDialog(dialog, owner) == DialogResult.OK;
                 if (applied) SetStatus("计算深度已设置为：" + difficultyBox.SelectedItem + "，下次分析生效。");
                 return applied;
             }
@@ -441,6 +321,7 @@ namespace GoDesk
         private void NewGame()
         {
             CancelAnalysis(); int size = sizeBox.SelectedIndex == 1 ? 13 : sizeBox.SelectedIndex == 2 ? 9 : 19;
+            analysisTimeline.Clear();
             game.NewGame(size, komi, handicap, handicapColor); game.Rules = rules; ResetStudyRegion(); ClearAnalysis(); board.Game = game; UpdateUi();
             SetStatus("新对局已开始。" + (handicap > 0
                 ? (handicapColor == Stone.Black ? "白让黑 " : "黑让白 ") + handicap + " 子，" +
@@ -451,6 +332,7 @@ namespace GoDesk
         {
             if (value == null) throw new ArgumentNullException("value");
             if (value.Size != 9 && value.Size != 13 && value.Size != 19) throw new ArgumentException("桌面版支持 9 路、13 路和 19 路棋谱。");
+            analysisTimeline.Clear();
             CancelAnalysis(); ResetStudyRegion(); game = value; komi = game.Komi; rules = game.Rules; handicap = 0; handicapColor = Stone.Black;
             updating = true; sizeBox.SelectedIndex = game.Size == 13 ? 1 : game.Size == 9 ? 2 : 0; humanBox.SelectedIndex = 2; updating = false;
             ClearAnalysis(); board.Game = game; UpdateUi(); SetStatus((String.IsNullOrEmpty(game.ImportNotice) ? "" : game.ImportNotice + " ") + "棋谱已载入。用方向键复盘，或点击棋盘继续。");
@@ -460,8 +342,12 @@ namespace GoDesk
             CancelAnalysis();
             board.SelectingRegion = false;
             using (var dialog = new ImageImportForm(komi, rules))
-                if (dialog.ShowDialog(this) == DialogResult.OK && dialog.ImportedGame != null)
-                    ImportImagePosition(dialog.ImportedGame, dialog.ImportedRegion);
+            {
+                SetNavigationSelection("image");
+                if (ShowStyledDialog(dialog, this) == DialogResult.OK && dialog.ImportedGame != null)
+                { ImportImagePosition(dialog.ImportedGame, dialog.ImportedRegion); ShowWorkspace("review"); }
+                else SetNavigationSelection(currentSection);
+            }
         }
         internal void ImportImagePosition(GoGame position, StudyRegion region)
         {
@@ -476,7 +362,7 @@ namespace GoDesk
         }
         private async void MaybeAutoMove()
         {
-            if (closing || thinking || selfPlaying || board.SelectingRegion || !automaticBox.Checked || humanBox.SelectedIndex == 2 || game.IsOver || HumanTurn) return;
+            if (currentSection != "play" || reviewMode || closing || thinking || selfPlaying || board.SelectingRegion || !automaticBox.Checked || humanBox.SelectedIndex == 2 || game.IsOver || HumanTurn) return;
             await AnalyzeAsync(true, false);
         }
         private async Task ToggleSelfPlayAsync()
@@ -560,6 +446,7 @@ namespace GoDesk
             {
                 AnalysisResult result = await engine.AnalyzeAsync(game, Visits, ownership, partial => ShowAnalysisProgress(stamp, partial, play, ownership), requestedRegion);
                 if (closing || stamp != generation) return;
+                analysisTimeline.Record(game, result);
                 analysis = result; analysisPosition = game.Position; studyComparisonSummary = null;
                 board.Analysis = result; board.ShowHints = !play && !ownership; board.ShowOwnership = ownership;
                 if (play)
@@ -666,7 +553,7 @@ namespace GoDesk
             {
                 evaluationLabel.Text = (analysis.Region != null ? "局部条件 · " : studyRegion != null ? "全局对比 · " : "") + "黑方胜率  " + (analysis.BlackWinrate * 100).ToString("0.0") + "%";
                 double lead = analysis.BlackScoreLead;
-                detailLabel.Text = (lead >= 0 ? "黑方领先 " : "白方领先 ") + Math.Abs(lead).ToString("0.0") + " 目  ·  " + analysis.Visits + " 次搜索\r\nAI 形势估计，非最终裁判结果。";
+                detailLabel.Text = (lead >= 0 ? "黑方预计领先 " : "白方预计领先 ") + Math.Abs(lead).ToString("0.0") + " 目  ·  " + analysis.Visits + " 次搜索";
             }
             if (variationLabel != null)
             {
@@ -684,6 +571,7 @@ namespace GoDesk
                 }
             }
             evaluationBar.Invalidate();
+            RefreshDesignedUi();
         }
         private void PaintEvaluation(object sender, PaintEventArgs e)
         {
@@ -695,20 +583,20 @@ namespace GoDesk
         private void OpenSgf()
         {
             using (OpenFileDialog dialog = new OpenFileDialog { Title = "打开围棋棋谱", Filter = "SGF 棋谱 (*.sgf)|*.sgf|所有文件 (*.*)|*.*" })
-                if (dialog.ShowDialog(this) == DialogResult.OK)
+                if (ShowStyledDialog(dialog, this) == DialogResult.OK)
                     try { LoadGame(GoGame.FromSgf(File.ReadAllText(dialog.FileName, Encoding.UTF8))); }
                     catch (Exception ex) { MessageBox.Show(this, "无法打开棋谱：" + ex.Message, "棋谱错误", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         }
         private void SaveSgf()
         {
             using (SaveFileDialog dialog = new SaveFileDialog { Title = "保存围棋棋谱", Filter = "SGF 棋谱 (*.sgf)|*.sgf", DefaultExt = "sgf", FileName = "梓懿围棋-" + DateTime.Now.ToString("yyyyMMdd-HHmm") + ".sgf" })
-                if (dialog.ShowDialog(this) == DialogResult.OK)
+                if (ShowStyledDialog(dialog, this) == DialogResult.OK)
                     try { File.WriteAllText(dialog.FileName, game.ToSgf(), new UTF8Encoding(false)); SetStatus("棋谱已保存：" + dialog.FileName); }
                     catch (Exception ex) { MessageBox.Show(this, "无法保存棋谱：" + ex.Message, "保存错误", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         }
         private void GameSettings()
         {
-            using (Form dialog = new Form { Name = "GameSettings", Text = "规则 / 设置", Width = 450, Height = 540, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, Font = Font, BackColor = BackColor })
+            using (Form dialog = new Form { AutoScaleMode = AutoScaleMode.None, Name = "GameSettings", Text = "规则 / 设置", Width = 450, Height = 540, FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent, MaximizeBox = false, MinimizeBox = false, Font = Font, BackColor = BackColor })
             {
                 Label k = new Label { Text = "贴目", Location = new Point(23, 24), Size = new Size(86, 26) };
                 NumericUpDown komiInput = new NumericUpDown { Name = "KomiInput", Location = new Point(117, 20), Width = 166, Minimum = -150, Maximum = 150, DecimalPlaces = 1, Increment = .5m, Value = (decimal)komi };
@@ -743,12 +631,12 @@ namespace GoDesk
                     komi = (double)komiInput.Value; handicap = (int)handicapInput.Value; handicapColor = handicapDirection.SelectedIndex == 1 ? Stone.White : Stone.Black; rules = ruleInput.SelectedIndex == 1 ? "japanese" : "chinese-ogs"; dialog.DialogResult = DialogResult.OK;
                 }); ok.Name = "GameSettingsOk"; ok.Location = new Point(318, 445);
                 Button cancel = MakeButton("取消", 85, delegate { dialog.DialogResult = DialogResult.Cancel; }); cancel.Name = "GameSettingsCancel"; cancel.Location = new Point(222, 445);
-                dialog.Controls.AddRange(new Control[] { k, komiInput, h, handicapDirection, countLabel, handicapInput, countHint, handicapPreview, ruleLabel, ruleInput, depthLabel, depthButton, volumeLabel, volumeInput, volumePercent, soundPreview, info, ok, cancel }); dialog.AcceptButton = ok; dialog.CancelButton = cancel; dialog.ShowDialog(this);
+                dialog.Controls.AddRange(new Control[] { k, komiInput, h, handicapDirection, countLabel, handicapInput, countHint, handicapPreview, ruleLabel, ruleInput, depthLabel, depthButton, volumeLabel, volumeInput, volumePercent, soundPreview, info, ok, cancel }); dialog.AcceptButton = ok; dialog.CancelButton = cancel; ShowStyledDialog(dialog, this);
             }
         }
         private void ShowHelp()
         {
-            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n分先时选择执白，AI 会先行；让子棋按实际先行方应手。选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n规则 / 设置中可选择黑让白或白让黑 0–9 子，确认后点新对局生效。\r\n1 子放天元，获得让子的一方先摆，对方先行。\r\n\r\n框选局部：拖动选择研究区域，双方搜索与落子限定在框内。\r\n全局对比：仅分析全盘，保留研究框；退出局部恢复全盘对弈。\r\n显示手数：棋子上显示原始落子序号，开局预摆棋子不编号。\r\n局部推荐是限定条件下的估计，征子和劫争可能需要扩大范围。\r\n\r\n推荐着点：显示 A–E 候选及下在 A 后双方可能的走法。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置…”或帮助菜单选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\n截图 / 照片摆棋：选择图片、粘贴或框选屏幕；校准四角与可见格数，修正黑白子后导入。\r\n局部图需确认所在角边、下一手颜色；未拍到的区域留空，预摆棋子不编号。\r\n\r\nCtrl+I：截图 / 照片摆棋。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "在棋盘交叉点点击落子，KataGo 可自动应手。\r\n分先时选择执白，AI 会先行；让子棋按实际先行方应手。选择双方可自由摆棋与复盘。\r\n坐标从左上角 A1 起，列连续包含 I；19 路右下角为 S19。\r\n规则 / 设置中可选择黑让白或白让黑 0–9 子，确认后点新对局生效。\r\n1 子放天元，获得让子的一方先摆，对方先行。\r\n\r\n框选局部：拖动选择研究区域，双方搜索与落子限定在框内。\r\n全局对比：仅分析全盘，保留研究框；退出局部恢复全盘对弈。\r\n显示手数：棋子上显示原始落子序号，开局预摆棋子不编号。\r\n局部推荐是限定条件下的估计，征子和劫争可能需要扩大范围。\r\n\r\n推荐着点：显示 A–E 候选及下在 A 后双方可能的走法。\r\n形势 / 领地：显示胜率、目差和归属估计。\r\n计算深度预设 256、1024、2048、4096、8192、16384 次，或自定义。\r\n持续思考模式由你手动结束，并采用当前最佳结果。\r\n当前引擎 / 模型：" + engineSettings.Description + "。\r\n可从右侧“设置”或左侧设置页选择 CUDA、OpenCL、CPU、带日期的模型及自定义文件。\r\nCUDA 适用于 NVIDIA 显卡，完整包无需另装 CUDA 开发工具。\r\nGPU 默认最强模型与 2048 次搜索；CPU 便携版默认 256 次。\r\n搜索次数表示计算量，不是推演手数或人类段位。\r\n\r\n← / →：上一手 / 下一手；Home / End：首手 / 末手。\r\n截图 / 照片摆棋：选择图片、粘贴或框选屏幕；校准四角与可见格数，修正黑白子后导入。\r\n局部图需确认所在角边、下一手颜色；未拍到的区域留空，预摆棋子不编号。\r\n\r\nCtrl+I：截图 / 照片摆棋。\r\nCtrl+N：新对局；Ctrl+O：打开 SGF；Ctrl+S：保存 SGF。\r\n\r\n首次运行请等待本地 KataGo 加载。", "梓懿围棋使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         private void OnShortcut(object sender, KeyEventArgs e)
         {
@@ -756,6 +644,7 @@ namespace GoDesk
             else if (e.Control && e.KeyCode == Keys.O) { OpenSgf(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.S) { SaveSgf(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.N) { NewGame(); e.Handled = true; }
+            else if (e.KeyCode == Keys.F1) { ShowHelp(); e.Handled = true; }
             else if (e.Control && e.KeyCode == Keys.I) { ImportBoardImage(); e.Handled = true; }
             else if (!(ActiveControl is ComboBox))
             {

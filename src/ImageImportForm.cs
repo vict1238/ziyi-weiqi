@@ -23,7 +23,10 @@ namespace GoDesk
         private readonly ComboBox sizeBox, anchorBox, playerBox;
         private readonly NumericUpDown columnsBox, rowsBox, startColumnBox, startRowBox;
         private readonly Button recognizeButton, confirmButton, undoButton;
-        private readonly Label status, mappingLabel;
+        private readonly Label status, mappingLabel, countsLabel;
+        private readonly ImportStepBar steps;
+        private readonly Panel advancedPanel;
+        private readonly WarmButton advancedButton;
         private readonly List<Control> busyControls = new List<Control>();
         private readonly Stack<DraftChange> undo = new Stack<DraftChange>();
         private Stone[,] stones = new Stone[19, 19];
@@ -56,84 +59,100 @@ namespace GoDesk
         {
             komi = newKomi; rules = newRules;
             Name = "ImageImport"; Text = "截图 / 照片摆棋";
-            AutoScaleMode = AutoScaleMode.Dpi;
-            AutoScaleDimensions = new SizeF(96, 96);
-            MinimumSize = new Size(1000, 700); Size = new Size(1180, 820);
+            SuspendLayout();
+            AutoScaleMode = AutoScaleMode.None; AutoScaleDimensions = new SizeF(96, 96);
+            MinimumSize = new Size(1000, 720); Size = new Size(1280, 850);
             StartPosition = FormStartPosition.CenterParent;
-            Font = new Font("Microsoft YaHei UI", 9f);
-            BackColor = Color.FromArgb(242, 240, 234);
+            Font = new Font("Microsoft YaHei UI", 9f); BackColor = UiTheme.Background; ForeColor = UiTheme.Text;
             KeyPreview = true;
 
-            FlowLayoutPanel files = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(10, 6, 6, 0), WrapContents = false, AutoScroll = true };
-            files.Controls.Add(ActionButton("选择图片…", "ImportChooseImage", async delegate { await ChooseImageAsync(); }));
-            files.Controls.Add(ActionButton("粘贴图片", "ImportPasteImage", async delegate { await PasteImageAsync(); }));
-            files.Controls.Add(ActionButton("屏幕框选…", "ImportCaptureScreen", async delegate { await CaptureScreenAsync(); }));
-            files.Controls.Add(ActionButton("旋转 90°", "ImportRotateImage", delegate { RotateImage(); }));
-            files.Controls.Add(ActionButton("自动定位", "ImportDetectGrid", async delegate { await DetectGridAsync(); }));
-            recognizeButton = ActionButton("识别棋子", "ImportRecognize", async delegate { await RecognizeImageAsync(); });
-            recognizeButton.BackColor = Color.FromArgb(41, 113, 99); recognizeButton.ForeColor = Color.White;
-            files.Controls.Add(recognizeButton);
+            Panel header = new Panel { Dock = DockStyle.Top, Height = 57, Padding = new Padding(22, 10, 22, 8) };
+            PictureBox camera = new PictureBox { Image = UiTheme.Icon("camera"), SizeMode = PictureBoxSizeMode.Zoom, Location = new Point(22, 17), Size = new Size(23, 23) };
+            Label title = new Label { Text = "截图识别", AutoSize = true, Location = new Point(54, 14), Font = new Font(Font.FontFamily, 14f, FontStyle.Bold), ForeColor = UiTheme.Accent };
+            Label subtitle = new Label { Text = "将截图或照片中的棋局带到棋盘上", Dock = DockStyle.Right, Width = 350, TextAlign = ContentAlignment.MiddleRight, ForeColor = UiTheme.Muted };
+            header.Controls.Add(camera); header.Controls.Add(title); header.Controls.Add(subtitle);
+            Panel stepHost = new Panel { Dock = DockStyle.Top, Height = 65, Padding = new Padding(18, 0, 18, 8) };
+            steps = new ImportStepBar { Dock = DockStyle.Fill, Name = "ImportSteps" }; stepHost.Controls.Add(steps);
 
-            FlowLayoutPanel settings = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 76, Padding = new Padding(13, 2, 6, 0), AutoScroll = true };
-            sizeBox = Choice("ImportBoardSize", new string[] { "19 路", "13 路", "9 路" }, 77);
-            columnsBox = Number("ImportColumns", 2, 19, 19);
-            rowsBox = Number("ImportRows", 2, 19, 19);
-            anchorBox = Choice("ImportAnchor", new string[] { "左上角", "右上角", "左下角", "右下角", "居中", "自定义位置" }, 108);
-            startColumnBox = Number("ImportStartColumn", 1, 19, 1);
-            startRowBox = Number("ImportStartRow", 1, 19, 1);
-            playerBox = Choice("ImportNextPlayer", new string[] { "黑先", "白先" }, 73);
-            settings.Controls.Add(Field("完整棋盘", sizeBox));
-            settings.Controls.Add(Field("图中列数", columnsBox));
-            settings.Controls.Add(Field("图中行数", rowsBox));
-            settings.Controls.Add(Field("放在棋盘", anchorBox));
-            settings.Controls.Add(Field("起始列", startColumnBox));
-            settings.Controls.Add(Field("起始行", startRowBox));
-            settings.Controls.Add(Field("下一手", playerBox));
-            mappingLabel = new Label { Name = "ImportMapping", Dock = DockStyle.Top, Height = 35, Padding = new Padding(14, 1, 10, 1), ForeColor = Color.FromArgb(76, 88, 84) };
+            sizeBox = Choice("ImportBoardSize", new string[] { "19 路", "13 路", "9 路" }, 82);
+            columnsBox = Number("ImportColumns", 2, 19, 19); rowsBox = Number("ImportRows", 2, 19, 19);
+            anchorBox = Choice("ImportAnchor", new string[] { "左上角", "右上角", "左下角", "右下角", "居中", "自定义位置" }, 105);
+            startColumnBox = Number("ImportStartColumn", 1, 19, 1); startRowBox = Number("ImportStartRow", 1, 19, 1);
+            playerBox = Choice("ImportNextPlayer", new string[] { "黑先", "白先" }, 78);
+            FlowLayoutPanel settings = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(22, 1, 12, 0), WrapContents = false };
+            settings.Controls.Add(Field("完整棋盘", sizeBox)); settings.Controls.Add(Field("下一手", playerBox));
+            advancedButton = new WarmButton { Name = "ImportAdvanced", Text = "局部与校准", IconName = "settings", Width = 160, Height = 30, Margin = new Padding(10, 2, 0, 0) };
+            advancedPanel = new Panel { Name = "ImportAdvancedPanel", Dock = DockStyle.Top, Height = 43, Visible = false, Padding = new Padding(22, 0, 12, 0) };
+            FlowLayoutPanel advanced = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true };
+            advanced.Controls.Add(Field("图中列数", columnsBox)); advanced.Controls.Add(Field("图中行数", rowsBox));
+            advanced.Controls.Add(Field("放在棋盘", anchorBox)); advanced.Controls.Add(Field("起始列", startColumnBox)); advanced.Controls.Add(Field("起始行", startRowBox));
+            advancedPanel.Controls.Add(advanced);
+            advancedButton.Click += delegate { advancedPanel.Visible = !advancedPanel.Visible; advancedButton.Selected = advancedPanel.Visible; };
+            settings.Controls.Add(advancedButton);
+            mappingLabel = new Label { Name = "ImportMapping", Dock = DockStyle.Top, Height = 29, Padding = new Padding(23, 0, 16, 0), ForeColor = UiTheme.Muted, Font = new Font(Font.FontFamily, 9f), AutoEllipsis = true };
 
-            SplitContainer split = new SplitContainer { Size = new Size(1140, 550), Dock = DockStyle.Fill, SplitterWidth = 7, Panel1MinSize = 330, Panel2MinSize = 330, SplitterDistance = 565 };
-            Panel original = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10, 0, 3, 0) };
-            Label imageTitle = new Label { Dock = DockStyle.Top, Height = 48, Text = "原图：四角对齐最外侧可见交叉点\r\n拖动圆点校准；滚轮缩放，右键拖动，双击恢复全图。", ForeColor = Color.FromArgb(76, 88, 84) };
+            TableLayoutPanel body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(16, 3, 16, 8), Name = "ImportWorkspace" };
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38)); body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62)); body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 185));
+            body.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            WarmCard original = new WarmCard { Title = "图片原图", IconName = "image", Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 0) };
             imageView = new ImageGridControl { Name = "ImportImagePreview", Dock = DockStyle.Fill };
-            imageView.GeometryChanged += delegate
-            {
-                if (source == null) return;
-                geometry = imageView.Geometry.Clone(); MarkStale("格线已调整，请重新识别棋子。");
-            };
-            original.Controls.Add(imageView); original.Controls.Add(imageTitle); split.Panel1.Controls.Add(original);
-            Panel preview = new Panel { Dock = DockStyle.Fill, Padding = new Padding(3, 0, 10, 0) };
-            FlowLayoutPanel tools = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48, WrapContents = false, AutoScroll = true };
-            RadioButton blackTool = new RadioButton { Name = "ImportBlackTool", Text = "放黑子", AutoSize = true, Checked = true, Padding = new Padding(0, 7, 0, 0) };
-            RadioButton whiteTool = new RadioButton { Name = "ImportWhiteTool", Text = "放白子", AutoSize = true, Padding = new Padding(0, 7, 0, 0) };
-            RadioButton eraseTool = new RadioButton { Name = "ImportEraseTool", Text = "擦除", AutoSize = true, Padding = new Padding(0, 7, 0, 0) };
+            imageView.GeometryChanged += delegate { if (source == null) return; geometry = imageView.Geometry.Clone(); MarkStale("格线已调整，请重新识别棋子。"); };
+            Label imageHelp = new Label { Dock = DockStyle.Bottom, Height = 42, Text = "拖动四角对齐交叉点\r\n滚轮缩放 · 右键平移 · 双击还原", ForeColor = UiTheme.Muted, Font = new Font(Font.FontFamily, 8f), Padding = new Padding(0, 6, 0, 0) };
+            TableLayoutPanel files = new TableLayoutPanel { Dock = DockStyle.Top, Height = 76, ColumnCount = 2, RowCount = 2, Padding = new Padding(0, 0, 0, 5) };
+            files.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); files.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            files.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); files.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+            Button choose = ActionButton("选择图片", "ImportChooseImage", async delegate { await ChooseImageAsync(); }); ((WarmButton)choose).Primary = true; ((WarmButton)choose).IconName = "upload";
+            Button paste = ActionButton("粘贴图片", "ImportPasteImage", async delegate { await PasteImageAsync(); }); ((WarmButton)paste).IconName = "image";
+            Button capture = ActionButton("屏幕框选", "ImportCaptureScreen", async delegate { await CaptureScreenAsync(); }); ((WarmButton)capture).IconName = "camera";
+            choose.Dock = paste.Dock = capture.Dock = DockStyle.Fill;
+            files.Controls.Add(choose, 0, 0); files.Controls.Add(paste, 1, 0); files.Controls.Add(capture, 0, 1); files.SetColumnSpan(capture, 2);
+            TableLayoutPanel calibration = new TableLayoutPanel { Dock = DockStyle.Top, Height = 37, ColumnCount = 2, RowCount = 1 };
+            calibration.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); calibration.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            Button locate = ActionButton("定位格线", "ImportDetectGrid", async delegate { await DetectGridAsync(); }); ((WarmButton)locate).IconName = "settings";
+            Button rotate = ActionButton("旋转 90°", "ImportRotateImage", delegate { RotateImage(); }); ((WarmButton)rotate).IconName = "rotate";
+            locate.Dock = rotate.Dock = DockStyle.Fill; calibration.Controls.Add(locate, 0, 0); calibration.Controls.Add(rotate, 1, 0);
+            original.Controls.Add(imageView); original.Controls.Add(imageHelp); original.Controls.Add(calibration); original.Controls.Add(files);
+
+            WarmCard preview = new WarmCard { Title = "识别结果", Dock = DockStyle.Fill, Margin = new Padding(0, 0, 10, 0) };
+            FlowLayoutPanel tools = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 37, WrapContents = false, AutoScroll = true, Padding = new Padding(0, 0, 0, 2) };
+            RadioButton blackTool = new RadioButton { Name = "ImportBlackTool", Text = "放黑子", AutoSize = true, Checked = true, Padding = new Padding(0, 5, 0, 0), Margin = new Padding(0, 0, 8, 0) };
+            RadioButton whiteTool = new RadioButton { Name = "ImportWhiteTool", Text = "放白子", AutoSize = true, Padding = new Padding(0, 5, 0, 0), Margin = new Padding(0, 0, 8, 0) };
+            RadioButton eraseTool = new RadioButton { Name = "ImportEraseTool", Text = "擦除", AutoSize = true, Padding = new Padding(0, 5, 0, 0), Margin = new Padding(0, 0, 5, 0) };
             blackTool.CheckedChanged += delegate { if (blackTool.Checked) tool = Stone.Black; };
             whiteTool.CheckedChanged += delegate { if (whiteTool.Checked) tool = Stone.White; };
             eraseTool.CheckedChanged += delegate { if (eraseTool.Checked) tool = Stone.Empty; };
-            undoButton = ActionButton("撤销修正", "ImportUndo", delegate { UndoEdit(); }); undoButton.Width = 94;
+            undoButton = ActionButton("撤销", "ImportUndo", delegate { UndoEdit(); }); undoButton.Width = 72; ((WarmButton)undoButton).IconName = "undo";
             tools.Controls.Add(blackTool); tools.Controls.Add(whiteTool); tools.Controls.Add(eraseTool); tools.Controls.Add(undoButton);
             boardView = new ImportDraftBoard { Name = "ImportBoardPreview", Dock = DockStyle.Fill };
             boardView.PointClicked += delegate(object sender, BoardPointEventArgs e) { EditPoint(e.X, e.Y, tool); };
-            Label draftHint = new Label { Dock = DockStyle.Bottom, Height = 38, Text = "橙圈：请核对。灰色区域：原图未提供，可手动补子。\r\n连续摆子不会轮流换色或自动提子；右键可擦除。", ForeColor = Color.FromArgb(76, 88, 84), Font = new Font(Font.FontFamily, 8f) };
             boardView.EraseClicked += delegate(object sender, BoardPointEventArgs e) { EditPoint(e.X, e.Y, Stone.Empty); };
-            preview.Controls.Add(boardView); preview.Controls.Add(draftHint); preview.Controls.Add(tools); split.Panel2.Controls.Add(preview);
+            Label draftHint = new Label { Dock = DockStyle.Bottom, Height = 38, Text = "橙圈位置请核对；灰色区域未出现在原图中。\r\n可连续摆同色棋子，右键擦除。", ForeColor = UiTheme.Muted, Font = new Font(Font.FontFamily, 8f), Padding = new Padding(0, 5, 0, 0) };
+            preview.Controls.Add(boardView); preview.Controls.Add(draftHint); preview.Controls.Add(tools);
 
-            Panel footer = new Panel { Dock = DockStyle.Bottom, Height = 87, Padding = new Padding(12, 3, 12, 7) };
-            FlowLayoutPanel decisions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 36, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
-            Button cancel = ActionButton("取消", "ImportCancel", delegate { DialogResult = DialogResult.Cancel; Close(); }); cancel.Width = 85;
-            confirmButton = ActionButton("确认导入，开始研究", "ImportConfirm", delegate { ConfirmImport(); }); confirmButton.Width = 180;
-            confirmButton.BackColor = Color.FromArgb(41, 113, 99); confirmButton.ForeColor = Color.White;
-            decisions.Controls.Add(cancel); decisions.Controls.Add(confirmButton);
-            status = new Label { Name = "ImportStatus", Dock = DockStyle.Fill, Text = "选择图片或粘贴截图。实体棋盘照片也可使用；先检查格线，再识别棋子。", ForeColor = Color.FromArgb(76, 88, 84) };
-            footer.Controls.Add(status); footer.Controls.Add(decisions);
-            Controls.Add(split); Controls.Add(mappingLabel); Controls.Add(settings); Controls.Add(files); Controls.Add(footer);
+            Panel right = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) };
+            WarmCard tips = new WarmCard { Title = "校正提示", IconName = "settings", Dock = DockStyle.Fill };
+            countsLabel = new Label { Name = "ImportCounts", Dock = DockStyle.Top, Height = 65, Text = "等待上传图片", Font = new Font(Font.FontFamily, 10f, FontStyle.Bold), ForeColor = UiTheme.Text };
+            Label tipText = new Label { Dock = DockStyle.Fill, ForeColor = UiTheme.Muted, Font = new Font(Font.FontFamily, 8.8f), Text = "对照原图核对棋子，橙圈位置可点击修正。\r\n\r\n照片：拖动四角对齐格线。\r\n\r\n局部图：确认所在角边。\r\n\r\n确认后可继续研究、保存棋谱。" };
+            tips.Controls.Add(tipText); tips.Controls.Add(countsLabel);
+            TableLayoutPanel decisions = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 126, RowCount = 3, ColumnCount = 1, Padding = new Padding(0, 9, 0, 0) };
+            decisions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            decisions.RowStyles.Add(new RowStyle(SizeType.Absolute, 41)); decisions.RowStyles.Add(new RowStyle(SizeType.Absolute, 37)); decisions.RowStyles.Add(new RowStyle(SizeType.Absolute, 37));
+            confirmButton = ActionButton("导入棋盘", "ImportConfirm", delegate { ConfirmImport(); }); ((WarmButton)confirmButton).Primary = true; ((WarmButton)confirmButton).IconName = "check"; confirmButton.Dock = DockStyle.Fill;
+            recognizeButton = ActionButton("开始识别", "ImportRecognize", async delegate { await RecognizeImageAsync(); }); ((WarmButton)recognizeButton).IconName = "retry"; recognizeButton.Dock = DockStyle.Fill;
+            Button cancel = ActionButton("返回棋盘", "ImportCancel", delegate { DialogResult = DialogResult.Cancel; Close(); }); cancel.Dock = DockStyle.Fill;
+            decisions.Controls.Add(confirmButton, 0, 0); decisions.Controls.Add(recognizeButton, 0, 1); decisions.Controls.Add(cancel, 0, 2);
+            right.Controls.Add(tips); right.Controls.Add(decisions);
+            body.Controls.Add(original, 0, 0); body.Controls.Add(preview, 1, 0); body.Controls.Add(right, 2, 0);
+            Panel footer = new Panel { Dock = DockStyle.Bottom, Height = 48, Padding = new Padding(22, 4, 22, 7) };
+            status = new Label { Name = "ImportStatus", Dock = DockStyle.Fill, Text = "选择、粘贴或拖入棋盘图片。图片在本机识别，确认前保留原棋局。", ForeColor = UiTheme.Muted, Font = new Font(Font.FontFamily, 8.5f), AutoEllipsis = true };
+            footer.Controls.Add(status);
+            Controls.Add(body); Controls.Add(footer); Controls.Add(mappingLabel); Controls.Add(advancedPanel); Controls.Add(settings); Controls.Add(stepHost); Controls.Add(header);
             CancelButton = cancel;
-
-            foreach (Control c in files.Controls) busyControls.Add(c);
-            foreach (Control c in new Control[] { sizeBox, columnsBox, rowsBox, anchorBox, startColumnBox, startRowBox, playerBox }) busyControls.Add(c);
+            foreach (Control control in new Control[] { choose, paste, capture, locate, rotate, sizeBox, columnsBox, rowsBox, anchorBox, startColumnBox, startRowBox, playerBox, advancedButton }) busyControls.Add(control);
             sizeBox.SelectedIndexChanged += delegate { if (!updating) ChangeBoardSize(); };
             columnsBox.ValueChanged += delegate { if (!updating) ChangeVisibleSize(); };
             rowsBox.ValueChanged += delegate { if (!updating) ChangeVisibleSize(); };
-            anchorBox.SelectedIndexChanged += delegate { if (!updating) { UpdatePlacement(true); } };
+            anchorBox.SelectedIndexChanged += delegate { if (!updating) UpdatePlacement(true); };
             startColumnBox.ValueChanged += delegate { if (!updating) { SelectCustomAnchor(); UpdatePlacement(true); } };
             startRowBox.ValueChanged += delegate { if (!updating) { SelectCustomAnchor(); UpdatePlacement(true); } };
             KeyDown += async delegate(object sender, KeyEventArgs e)
@@ -141,7 +160,11 @@ namespace GoDesk
                 if (e.Control && e.KeyCode == Keys.V) { e.Handled = true; e.SuppressKeyPress = true; await PasteImageAsync(); }
                 if (e.Control && e.KeyCode == Keys.Z) { UndoEdit(); e.Handled = true; e.SuppressKeyPress = true; }
             };
+            AllowDrop = true;
+            DragEnter += OnImageDragEnter; DragDrop += OnImageDrop;
+            imageView.AllowDrop = true; imageView.DragEnter += OnImageDragEnter; imageView.DragDrop += OnImageDrop;
             UpdatePlacement(false); UpdateEnabled();
+            UiTheme.FinishDpiLayout(this, new Size(1280, 850));
         }
 
         protected override void Dispose(bool disposing)
@@ -158,22 +181,22 @@ namespace GoDesk
         private int BoardSize { get { return sizeBox.SelectedIndex == 1 ? 13 : sizeBox.SelectedIndex == 2 ? 9 : 19; } }
         private Button ActionButton(string text, string name, EventHandler action)
         {
-            Button button = new Button { Text = text, Name = name, Width = 105, Height = 31, FlatStyle = FlatStyle.Flat, Margin = new Padding(2, 1, 5, 1), BackColor = Color.White };
-            button.FlatAppearance.BorderColor = Color.FromArgb(205, 211, 205); button.Click += action; return button;
+            Button button = new WarmButton { Text = text, Name = name, Width = 105, Height = 31, Margin = new Padding(2, 1, 3, 3) };
+            button.Click += action; return button;
         }
         private static ComboBox Choice(string name, string[] choices, int width)
         {
-            ComboBox box = new ComboBox { Name = name, DropDownStyle = ComboBoxStyle.DropDownList, Width = width };
+            ComboBox box = new ComboBox { Name = name, DropDownStyle = ComboBoxStyle.DropDownList, Width = width, FlatStyle = FlatStyle.Flat, BackColor = UiTheme.Surface, ForeColor = UiTheme.Text };
             box.Items.AddRange(choices); box.SelectedIndex = 0; return box;
         }
         private static NumericUpDown Number(string name, int min, int max, int value)
         {
-            return new NumericUpDown { Name = name, Minimum = min, Maximum = max, Value = value, Width = 53 };
+            return new NumericUpDown { Name = name, Minimum = min, Maximum = max, Value = value, Width = 56, BorderStyle = BorderStyle.FixedSingle, BackColor = UiTheme.Surface, ForeColor = UiTheme.Text };
         }
         private static FlowLayoutPanel Field(string label, Control input)
         {
             FlowLayoutPanel panel = new FlowLayoutPanel { AutoSize = true, Height = 29, WrapContents = false, Margin = new Padding(0, 3, 10, 2) };
-            panel.Controls.Add(new Label { Text = label, AutoSize = true, Padding = new Padding(0, 5, 0, 0), Margin = new Padding(0, 0, 3, 0) }); panel.Controls.Add(input); return panel;
+            panel.Controls.Add(new Label { Text = label, AutoSize = true, Padding = new Padding(0, 5, 0, 0), Margin = new Padding(0, 0, 6, 0), ForeColor = UiTheme.Muted }); panel.Controls.Add(input); return panel;
         }
 
         private async Task ChooseImageAsync()
@@ -183,22 +206,44 @@ namespace GoDesk
             using (OpenFileDialog file = new OpenFileDialog { Title = "选择棋盘截图或照片", Filter = "图片 (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff)|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|所有文件 (*.*)|*.*" })
             {
                 if (file.ShowDialog(this) != DialogResult.OK) return;
-                try
-                {
-                    using (FileStream stream = File.OpenRead(file.FileName))
-                    using (Image image = Image.FromStream(stream, true, true))
-                    {
-                        ValidateImageSize(image.Width, image.Height);
-                        using (Bitmap bitmap = new Bitmap(image))
-                        {
-                            ApplyExifOrientation(bitmap, image);
-                            LoadImage(bitmap);
-                        }
-                    }
-                    await DetectGridAsync();
-                }
-                catch (Exception ex) { ShowError("无法打开这张图片：" + ex.Message); }
+                await ReadImageFileAsync(file.FileName);
             }
+        }
+        private static bool IsImageFile(string path)
+        {
+            if (String.IsNullOrWhiteSpace(path) || !File.Exists(path)) return false;
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            return extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp" || extension == ".gif" || extension == ".tif" || extension == ".tiff";
+        }
+        private void OnImageDragEnter(object sender, DragEventArgs e)
+        {
+            string[] paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+            e.Effect = !busy && paths != null && paths.Length == 1 && IsImageFile(paths[0]) ? DragDropEffects.Copy : DragDropEffects.None;
+        }
+        private async void OnImageDrop(object sender, DragEventArgs e)
+        {
+            if (busy) return;
+            string[] paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (paths == null || paths.Length != 1 || !IsImageFile(paths[0])) { ShowError("请拖入一张 PNG、JPG、BMP 或 TIFF 图片。"); return; }
+            if (!ConfirmDiscardEdits("载入新图片会清除当前手动修正。")) return;
+            await ReadImageFileAsync(paths[0]);
+        }
+        private async Task ReadImageFileAsync(string path)
+        {
+            try
+            {
+                if (!IsImageFile(path)) throw new ArgumentException("请选择支持的图片文件。");
+                if (new FileInfo(path).Length > 80L * 1024 * 1024) throw new ArgumentException("图片文件过大，请先缩小到 80 MB 以内。");
+                using (FileStream stream = File.OpenRead(path))
+                using (Image image = Image.FromStream(stream, true, true))
+                {
+                    ValidateImageSize(image.Width, image.Height);
+                    using (Bitmap bitmap = new Bitmap(image)) { ApplyExifOrientation(bitmap, image); LoadImage(bitmap); }
+                }
+                await DetectGridAsync();
+                if (!disposed && source != null && geometry != null) await RecognizeImageAsync();
+            }
+            catch (Exception ex) { if (!disposed) ShowError("无法打开这张图片：" + ex.Message); }
         }
         private static void ApplyExifOrientation(Bitmap bitmap, Image original)
         {
@@ -230,6 +275,7 @@ namespace GoDesk
                     using (Bitmap bitmap = new Bitmap(image)) LoadImage(bitmap);
                 }
                 await DetectGridAsync();
+                if (!disposed && source != null && geometry != null) await RecognizeImageAsync();
             }
             catch (Exception ex) { ShowError("无法粘贴图片：" + ex.Message); }
         }
@@ -248,7 +294,7 @@ namespace GoDesk
             geometry = new BoardImageGeometry { Columns = (int)columnsBox.Value, Rows = (int)rowsBox.Value, TopLeft = new PointF(margin, margin), TopRight = new PointF(source.Width - 1 - margin, margin), BottomRight = new PointF(source.Width - 1 - margin, source.Height - 1 - margin), BottomLeft = new PointF(margin, source.Height - 1 - margin) };
             imageView.Geometry = geometry.Clone(); imageView.Fit();
             stones = new Stone[BoardSize, BoardSize]; uncertain = new bool[BoardSize, BoardSize]; manual = new bool[BoardSize, BoardSize]; undo.Clear(); lastRecognizedGeometry = null; lastRecognizedRegion = null;
-            MarkStale("图片已载入。点击“自动定位”，检查四角与可见行列数后点击“识别棋子”。");
+            MarkStale("图片已载入。请检查格线与可见行列数，需要时调整四角后开始识别。");
         }
         private void RotateImage()
         {
@@ -274,7 +320,8 @@ namespace GoDesk
                     updating = false;
                     detected.Columns = (int)columnsBox.Value; detected.Rows = (int)rowsBox.Value;
                     geometry = detected; imageView.Geometry = geometry.Clone();
-                    UpdatePlacement(false); MarkStale("已找到候选格线。请检查可见行列数，并拖动四角对齐交叉点，再识别棋子。");
+                    UpdatePlacement(false); MarkStale("已定位格线。需要时拖动原图四角校准，局部图请确认所在角边。");
+                    if (detected.Columns < BoardSize || detected.Rows < BoardSize) { advancedPanel.Visible = true; advancedButton.Selected = true; }
                 }
                 catch (Exception ex) { if (!disposed) ShowError("自动定位未完成，请手动调整四角和可见行列数：" + ex.Message); }
                 finally { if (!disposed) SetBusy(false, null); }
@@ -403,11 +450,11 @@ namespace GoDesk
         }
         private void MarkStale(string message)
         {
-            revision++; recognized = false; status.ForeColor = Color.FromArgb(76, 88, 84); status.Text = message; UpdateDraft(); UpdateEnabled();
+            revision++; recognized = false; status.ForeColor = UiTheme.Muted; status.Text = message; UpdateDraft(); UpdateEnabled();
         }
         private void SetBusy(bool value, string message)
         {
-            busy = value; if (message != null) { status.ForeColor = Color.FromArgb(76, 88, 84); status.Text = message; } UpdateEnabled();
+            busy = value; if (message != null) { status.ForeColor = UiTheme.Muted; status.Text = message; } UpdateEnabled();
         }
         private void UpdateEnabled()
         {
@@ -416,6 +463,9 @@ namespace GoDesk
             recognizeButton.Enabled = !busy && source != null;
             confirmButton.Enabled = !busy && recognized;
             undoButton.Enabled = !busy && recognized && undo.Count > 0;
+            recognizeButton.Text = recognized || lastRecognizedGeometry != null ? "重新识别" : "开始识别";
+            steps.Stage = ImportedGame != null ? 3 : recognized ? 2 : source != null ? 1 : 0; steps.IsBusy = busy; steps.Invalidate();
+            if (!recognized) countsLabel.Text = source == null ? "等待上传图片" : busy ? "正在识别…" : "格线待确认";
         }
         private void UpdateDraft()
         {
@@ -426,7 +476,9 @@ namespace GoDesk
             int black = 0, white = 0, doubts = 0;
             for (int y = 0; y < BoardSize; y++) for (int x = 0; x < BoardSize; x++)
             { if (stones[x, y] == Stone.Black) black++; if (stones[x, y] == Stone.White) white++; if (uncertain[x, y]) doubts++; }
-            status.Text = "黑子 " + black + " 颗，白子 " + white + " 颗；" + doubts + " 个位置请核对。与原图对照，点击右侧棋盘修正后确认。";
+            countsLabel.Text = "黑 " + black + " 颗   白 " + white + " 颗\r\n待核对 " + doubts + " 处";
+            countsLabel.ForeColor = doubts > 0 ? UiTheme.Accent : UiTheme.Text;
+            status.Text = "黑子 " + black + " 颗，白子 " + white + " 颗；" + doubts + " 个位置请核对。请对照原图，在还原棋盘上修正后确认。";
             UpdateEnabled();
         }
         private void EditPoint(int x, int y, Stone color)
@@ -558,7 +610,7 @@ namespace GoDesk
                 if (owner != null && !owner.IsDisposed) owner.Opacity = ownerOpacity;
                 if (!disposed && !IsDisposed) { Opacity = oldOpacity; Activate(); }
             }
-            if (!disposed && captured) await DetectGridAsync();
+            if (!disposed && captured) { await DetectGridAsync(); if (!disposed && source != null && geometry != null) await RecognizeImageAsync(); }
         }
 
         private static Bitmap CaptureDesktop(Rectangle screen)
@@ -588,7 +640,7 @@ namespace GoDesk
         public ImageGridControl()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
-            BackColor = Color.FromArgb(39, 45, 44); TabStop = true;
+            BackColor = Color.FromArgb(248, 245, 240); TabStop = true;
         }
         public void Fit() { zoom = 1; offset = PointF.Empty; Invalidate(); }
         private RectangleF ImageBounds()
@@ -612,7 +664,14 @@ namespace GoDesk
             base.OnPaint(e); Graphics g = e.Graphics;
             if (source == null)
             {
-                TextRenderer.DrawText(g, "选择或粘贴一张棋盘图片", Font, ClientRectangle, Color.WhiteSmoke, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter); return;
+                Rectangle area = Rectangle.Inflate(ClientRectangle, -7, -7);
+                using (Pen border = new Pen(UiTheme.Border, 1f)) { border.DashStyle = DashStyle.Dash; g.DrawRectangle(border, area); }
+                Image icon = UiTheme.Icon("image");
+                int center = Height / 2;
+                if (icon != null) g.DrawImage(icon, new Rectangle((Width - 38) / 2, center - 68, 38, 38));
+                using (Font title = new Font(Font.FontFamily, 10f, FontStyle.Bold))
+                    TextRenderer.DrawText(g, "将棋盘图片拖到这里", title, new Rectangle(10, center - 16, Width - 20, 32), UiTheme.Text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                TextRenderer.DrawText(g, "截图、视频画面或实体棋盘照片", Font, new Rectangle(15, center + 23, Width - 30, 48), UiTheme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.WordBreak); return;
             }
             RectangleF bounds = ImageBounds(); g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.DrawImage(source, bounds);
             if (geometry == null) return;
@@ -693,28 +752,39 @@ namespace GoDesk
         public ImportDraftBoard()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
-            BackColor = Color.FromArgb(242, 240, 234); Cursor = Cursors.Hand;
+            BackColor = UiTheme.Surface; Cursor = Cursors.Hand;
         }
         public void SetDraft(Stone[,] value, bool[,] doubts, StudyRegion visible) { stones = value; uncertain = doubts; region = visible; Invalidate(); }
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e); if (stones == null || Width < 90 || Height < 90) return;
             int size = stones.GetLength(0); Graphics g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
-            float side = Math.Min(Width - 18, Height - 18), margin = Math.Max(23f, side * .065f);
+            float scale = g.DpiX / 96f;
+            float side = Math.Min(Width - 18 * scale, Height - 18 * scale);
+            float margin = Math.Max(23f * scale, side * (size <= 9 ? .12f : size <= 13 ? .09f : .066f));
             float woodLeft = (Width - side) / 2, woodTop = (Height - side) / 2;
             left = woodLeft + margin; top = woodTop + margin; step = (side - margin * 2) / (size - 1);
-            using (Brush wood = new LinearGradientBrush(new RectangleF(woodLeft, woodTop, side, side), Color.FromArgb(233, 193, 130), Color.FromArgb(216, 171, 100), 30f)) g.FillRectangle(wood, woodLeft, woodTop, side, side);
+            RectangleF boardBounds = new RectangleF(woodLeft, woodTop, side, side);
+            using (GraphicsPath edge = ImportStepBar.Round(boardBounds, 7))
+            {
+                Image wood = UiTheme.ResourceImage("board-wood.png");
+                GraphicsState previous = g.Save(); g.SetClip(edge);
+                if (wood != null) g.DrawImage(wood, boardBounds); else using (Brush fill = new SolidBrush(Color.FromArgb(237, 197, 132))) g.FillRectangle(fill, boardBounds);
+                g.Restore(previous); using (Pen border = new Pen(Color.FromArgb(216, 173, 112), .8f)) g.DrawPath(border, edge);
+            }
             if (region != null)
-                using (Brush unknown = new SolidBrush(Color.FromArgb(85, 150, 150, 150)))
+                using (Brush unknown = new SolidBrush(Color.FromArgb(63, 147, 139, 126)))
                     for (int y = 0; y < size; y++) for (int x = 0; x < size; x++) if (!region.Contains(x, y)) g.FillRectangle(unknown, left + x * step - step * .48f, top + y * step - step * .48f, step * .96f, step * .96f);
             using (Pen line = new Pen(Color.FromArgb(111, 83, 44), .8f))
                 for (int n = 0; n < size; n++) { g.DrawLine(line, left + n * step, top, left + n * step, top + (size - 1) * step); g.DrawLine(line, left, top + n * step, left + (size - 1) * step, top + n * step); }
-            using (Font labels = new Font(Font.FontFamily, Math.Max(7, Math.Min(10, step * .36f)), GraphicsUnit.Pixel))
+            using (Font labels = new Font(Font.FontFamily, Math.Max(7 * scale, Math.Min(10 * scale, step * .36f)), GraphicsUnit.Pixel))
             using (StringFormat format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                 for (int n = 0; n < size; n++)
                 {
-                    g.DrawString(((char)('A' + n)).ToString(), labels, Brushes.Black, left + n * step, top - margin * .5f, format);
-                    g.DrawString((n + 1).ToString(), labels, Brushes.Black, left - margin * .5f, top + n * step, format);
+                    g.DrawString(((char)('A' + n)).ToString(), labels, Brushes.Black, left + n * step, top - margin * .65f, format);
+                    g.DrawString(((char)('A' + n)).ToString(), labels, Brushes.Black, left + n * step, top + (size - 1) * step + margin * .65f, format);
+                    g.DrawString((n + 1).ToString(), labels, Brushes.Black, left - margin * .65f, top + n * step, format);
+                    g.DrawString((n + 1).ToString(), labels, Brushes.Black, left + (size - 1) * step + margin * .65f, top + n * step, format);
                 }
             for (int y = 0; y < size; y++) for (int x = 0; x < size; x++)
             {
@@ -722,8 +792,7 @@ namespace GoDesk
                 if (stones[x, y] != Stone.Empty)
                 {
                     RectangleF stone = new RectangleF(cx - diameter / 2, cy - diameter / 2, diameter, diameter);
-                    using (Brush fill = new LinearGradientBrush(stone, stones[x, y] == Stone.Black ? Color.FromArgb(80, 83, 83) : Color.White, stones[x, y] == Stone.Black ? Color.FromArgb(12, 15, 15) : Color.FromArgb(213, 216, 215), 55f)) g.FillEllipse(fill, stone);
-                    using (Pen outline = new Pen(Color.FromArgb(115, 91, 75, 51), .7f)) g.DrawEllipse(outline, stone);
+                    UiTheme.PaintStone(g, stone, stones[x, y]);
                 }
                 if (uncertain != null && uncertain[x, y])
                     using (Pen doubt = new Pen(Color.FromArgb(226, 112, 16), Math.Max(1.5f, step * .065f))) g.DrawEllipse(doubt, cx - step * .44f, cy - step * .44f, step * .88f, step * .88f);
@@ -747,7 +816,7 @@ namespace GoDesk
         public Rectangle Selection { get; private set; }
         public ImportScreenCapture(Bitmap bitmap, Rectangle screen)
         {
-            screenshot = bitmap; Name = "ImportScreenCapture"; AutoScaleMode = AutoScaleMode.None; Bounds = screen; StartPosition = FormStartPosition.Manual;
+            screenshot = bitmap; Name = "ImportScreenCapture"; Text = "框选棋盘图片"; AutoScaleMode = AutoScaleMode.None; Bounds = screen; StartPosition = FormStartPosition.Manual;
             FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true; Cursor = Cursors.Cross; DoubleBuffered = true; KeyPreview = true;
             KeyDown += delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); } };
         }
@@ -764,8 +833,8 @@ namespace GoDesk
                     e.Graphics.FillRectangle(dim, 0, selected.Top, selected.Left, selected.Height); e.Graphics.FillRectangle(dim, selected.Right, selected.Top, Width - selected.Right, selected.Height);
                 }
             }
-            if (selecting) using (Pen pen = new Pen(Color.FromArgb(44, 242, 187), 2f)) e.Graphics.DrawRectangle(pen, selected);
-            TextRenderer.DrawText(e.Graphics, "拖动框选棋盘图片；Esc 取消", SystemFonts.MessageBoxFont, new Rectangle(20, 20, Math.Max(400, Width - 40), 32), Color.White, Color.FromArgb(25, 64, 54), TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            if (selecting) using (Pen pen = new Pen(Color.FromArgb(232, 191, 129), 2f)) e.Graphics.DrawRectangle(pen, selected);
+            TextRenderer.DrawText(e.Graphics, "拖动框选棋盘图片；Esc 取消", SystemFonts.MessageBoxFont, new Rectangle(20, 20, Math.Max(400, Width - 40), 32), Color.White, Color.FromArgb(105, 69, 36), TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
         }
         private Rectangle CurrentSelection()
         {

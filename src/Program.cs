@@ -35,7 +35,8 @@ namespace GoDesk
                         Environment.NewLine + StoneSoundTests.Run() +
                         Environment.NewLine + LocalStudyTests.Run() +
                         Environment.NewLine + MoveNumbersTests.Run() +
-                        Environment.NewLine + BoardImageRecognizerTests.Run();
+                        Environment.NewLine + BoardImageRecognizerTests.Run() +
+                        Environment.NewLine + RedesignTests.Run();
                     WriteReport(args, "PASS\n" + result);
                     return 0;
                 }
@@ -319,6 +320,7 @@ namespace GoDesk
                     {
                         string result = await UiSmoke.RunAsync(form, Path.GetDirectoryName(Path.GetFullPath(args[1])));
                         result += Environment.NewLine + await ImageImportSmoke.RunAsync(form, Path.GetDirectoryName(Path.GetFullPath(args[1])));
+                        result += Environment.NewLine + await RedesignSmoke.RunAsync(form, Path.GetDirectoryName(Path.GetFullPath(args[1])));
                         WriteReport(args, "PASS\n" + result);
                     }
                     catch (Exception error)

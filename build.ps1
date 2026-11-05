@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 if (-not (Test-Path -LiteralPath $compiler)) { throw '需要 Windows 的 .NET Framework 4.8 开发编译器。' }
-$releaseDir = Join-Path $projectRoot 'release/梓懿围棋-v1.7.0'
+$releaseDir = Join-Path $projectRoot 'release/梓懿围棋-v1.8.0'
 $qaDir = Join-Path $projectRoot 'qa'
 New-Item -ItemType Directory -Path $releaseDir,$qaDir -Force | Out-Null
 $sourcePaths = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Filter '*.cs' | Sort-Object Name | ForEach-Object { $_.FullName })
@@ -24,6 +24,13 @@ foreach ($license in (Get-ChildItem -LiteralPath (Join-Path $assetRoot 'licenses
 $common += '/resource:' + (Join-Path $projectRoot 'THIRD-PARTY.md') + ',notices.THIRD-PARTY.txt'
 $common += '/resource:' + (Join-Path $projectRoot 'LICENSE.txt') + ',notices.GoDesk-LICENSE.txt'
 $common += '/resource:' + (Join-Path $projectRoot 'assets/stone.wav') + ',audio.stone.wav'
+$uiAssetRoot = Join-Path $projectRoot 'assets/ui'
+if (Test-Path -LiteralPath $uiAssetRoot) {
+    foreach ($asset in (Get-ChildItem -LiteralPath $uiAssetRoot -Recurse -File -Filter '*.png' | Sort-Object FullName)) {
+        $assetName = $asset.FullName.Substring($uiAssetRoot.Length + 1).Replace('\','.').Replace('/','.')
+        $common += '/resource:' + $asset.FullName + ',ui.' + $assetName
+    }
+}
 $exe = Join-Path $releaseDir '梓懿围棋.exe'
 & $compiler @common '/target:winexe' ('/out:' + $exe) @sourcePaths
 if ($LASTEXITCODE -ne 0) { throw '桌面程序编译失败。' }

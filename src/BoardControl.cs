@@ -72,7 +72,7 @@ namespace GoDesk
         public BoardControl()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
-            BackColor = Color.FromArgb(242, 240, 234);
+            BackColor = UiTheme.Background;
             AllowInput = true;
             TabStop = true;
             AccessibleName = "围棋棋盘";
@@ -87,28 +87,30 @@ namespace GoDesk
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
             if (game == null || Width < 90 || Height < 90) return;
             float scale = g.DpiX / 96f;
-            float side = Math.Min(Width - 24 * scale, Height - 24 * scale);
+            float side = Math.Min(Width - 18 * scale, Height - 18 * scale);
             if (side <= 0) return;
             wood = new RectangleF((Width - side) / 2, (Height - side) / 2, side, side);
-            float inset = Math.Max(24 * scale, side * .061f);
+            float inset = Math.Max(24 * scale, side * (game.Size == 9 ? .12f : game.Size == 13 ? .09f : .066f));
             grid = RectangleF.FromLTRB(wood.Left + inset, wood.Top + inset, wood.Right - inset, wood.Bottom - inset);
             step = grid.Width / (game.Size - 1);
-            using (Brush shadow = new SolidBrush(Color.FromArgb(24, 44, 35, 20)))
-                g.FillRectangle(shadow, wood.X + 3 * scale, wood.Y + 5 * scale, wood.Width, wood.Height);
-            using (Brush woodBrush = new LinearGradientBrush(wood, Color.FromArgb(226, 184, 117), Color.FromArgb(211, 164, 94), 25f))
-                g.FillRectangle(woodBrush, wood);
-            using (Pen grain = new Pen(Color.FromArgb(13, 126, 82, 27), .7f * scale))
+            using (GraphicsPath shadowPath = UiTheme.Rounded(new RectangleF(wood.X + scale, wood.Y + 3 * scale, wood.Width, wood.Height), 9 * scale))
+            using (Brush shadow = new SolidBrush(Color.FromArgb(22, 94, 64, 29))) g.FillPath(shadow, shadowPath);
+            using (GraphicsPath boardPath = UiTheme.Rounded(wood, 9 * scale))
             {
-                for (int n = 1; n < 90; n++)
+                GraphicsState saved = g.Save();
+                g.SetClip(boardPath);
+                Image texture = UiTheme.ResourceImage("board-wood.png");
+                if (texture != null)
                 {
-                    float x = wood.Left + n * wood.Width / 90;
-                    float bend = (float)Math.Sin(n * 4.2) * 3 * scale;
-                    g.DrawBezier(grain, x, wood.Top, x + bend, wood.Top + side / 3, x - bend, wood.Top + side * 2 / 3, x + bend / 2, wood.Bottom);
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(texture, wood);
                 }
+                else using (Brush fallback = new SolidBrush(Color.FromArgb(239, 195, 122))) g.FillRectangle(fallback, wood);
+                g.Restore(saved);
+                using (Pen outline = new Pen(Color.FromArgb(202, 164, 109), Math.Max(.7f, scale * .8f))) g.DrawPath(outline, boardPath);
             }
-            using (Pen outline = new Pen(Color.FromArgb(174, 131, 70), scale)) g.DrawRectangle(outline, wood.X, wood.Y, wood.Width, wood.Height);
             DrawStudyRegion(g, scale);
-            using (Pen line = new Pen(Color.FromArgb(105, 76, 40), Math.Max(.7f, scale * .8f)))
+            using (Pen line = new Pen(Color.FromArgb(132, 94, 48), Math.Max(.65f, scale * .66f)))
             {
                 for (int n = 0; n < game.Size; n++)
                 {
@@ -119,7 +121,7 @@ namespace GoDesk
             }
             DrawCoordinates(g, scale);
             int[] stars = game.Size == 19 ? new int[] { 3, 9, 15 } : game.Size == 13 ? new int[] { 3, 6, 9 } : new int[] { 2, 4, 6 };
-            using (Brush star = new SolidBrush(Color.FromArgb(83, 58, 28)))
+            using (Brush star = new SolidBrush(Color.FromArgb(89, 59, 25)))
                 foreach (int x in stars) foreach (int y in stars)
                 {
                     if (game.Size != 19 && x != y && x + y != game.Size - 1) continue;
@@ -160,7 +162,7 @@ namespace GoDesk
                 Math.Max(wood.Top + scale, grid.Top + region.Top * step - padding),
                 Math.Min(wood.Right - scale, grid.Left + region.Right * step + padding),
                 Math.Min(wood.Bottom - scale, grid.Top + region.Bottom * step + padding));
-            Color color = draggingRegion ? Color.FromArgb(211, 128, 39) : Color.FromArgb(34, 125, 108);
+            Color color = draggingRegion ? Color.FromArgb(201, 141, 48) : UiTheme.Accent;
             using (Brush wash = new SolidBrush(Color.FromArgb(draggingRegion ? 27 : 18, color))) g.FillRectangle(wash, bounds);
             using (Pen edge = new Pen(Color.FromArgb(220, color), Math.Max(1.5f * scale, step * .045f)))
             {
@@ -209,7 +211,7 @@ namespace GoDesk
         {
             float size = Math.Max(8, Math.Min(11 * scale, step * .37f));
             using (Font f = new Font("Segoe UI", size, FontStyle.Regular, GraphicsUnit.Pixel))
-            using (Brush b = new SolidBrush(Color.FromArgb(109, 77, 37)))
+            using (Brush b = new SolidBrush(Color.FromArgb(92, 65, 32)))
             using (StringFormat sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
             {
                 for (int i = 0; i < game.Size; i++)
@@ -229,21 +231,7 @@ namespace GoDesk
         {
             float diameter = step * .91f;
             RectangleF r = new RectangleF(grid.Left + x * step - diameter / 2, grid.Top + y * step - diameter / 2, diameter, diameter);
-            using (Brush b = new SolidBrush(Color.FromArgb(opacity == 255 ? 65 : 14, 66, 47, 22)))
-                g.FillEllipse(b, r.X + diameter * .06f, r.Y + diameter * .10f, r.Width, r.Height);
-            using (GraphicsPath path = new GraphicsPath())
-            {
-                path.AddEllipse(r);
-                using (PathGradientBrush b = new PathGradientBrush(path))
-                {
-                    b.CenterPoint = new PointF(r.X + diameter * .31f, r.Y + diameter * .26f);
-                    b.CenterColor = color == Stone.Black ? Color.FromArgb(opacity, 92, 94, 96) : Color.FromArgb(opacity, 255, 255, 255);
-                    b.SurroundColors = new Color[] { color == Stone.Black ? Color.FromArgb(opacity, 15, 17, 20) : Color.FromArgb(opacity, 207, 208, 203) };
-                    g.FillEllipse(b, r);
-                }
-            }
-            using (Pen edge = new Pen(Color.FromArgb(opacity, color == Stone.Black ? Color.FromArgb(24, 25, 27) : Color.FromArgb(170, 171, 166)), .7f))
-                g.DrawEllipse(edge, r);
+            UiTheme.PaintStone(g, r, color, opacity);
         }
 
         private void DrawOwnership(Graphics g)
@@ -275,7 +263,7 @@ namespace GoDesk
                 if (move.IsPass || move.X < 0 || move.Y < 0 || move.X >= game.Size || move.Y >= game.Size) continue;
                 float d = step * .76f;
                 RectangleF r = new RectangleF(grid.Left + move.X * step - d / 2, grid.Top + move.Y * step - d / 2, d, d);
-                using (Brush b = new SolidBrush(i == 0 ? Color.FromArgb(235, 49, 123, 109) : Color.FromArgb(218, 68, 130, 161))) g.FillEllipse(b, r);
+                using (Brush b = new SolidBrush(i == 0 ? Color.FromArgb(235, 53, 134, 79) : Color.FromArgb(222, 163, 116, 61))) g.FillEllipse(b, r);
                 using (Pen p = new Pen(Color.FromArgb(245, 251, 250), Math.Max(1, step * .035f))) g.DrawEllipse(p, r);
                 using (Font f = new Font("Segoe UI", Math.Max(8, step * .38f), FontStyle.Bold, GraphicsUnit.Pixel))
                 using (Brush b = new SolidBrush(Color.White))
