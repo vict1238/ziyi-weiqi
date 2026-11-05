@@ -242,15 +242,25 @@ namespace GoDesk
         private bool hover;
         public WarmToggle()
         {
-            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
-            AutoSize = false; Height = 28; BackColor = Color.Transparent; ForeColor = UiTheme.Text; Cursor = Cursors.Hand;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.Opaque, true);
+            SetStyle(ControlStyles.SupportsTransparentBackColor, false);
+            AutoSize = false; Height = 28; BackColor = UiTheme.Surface; ForeColor = UiTheme.Text; Cursor = Cursors.Hand;
         }
+        private void ClearBackground(Graphics graphics)
+        {
+            Color background = Parent == null ? BackColor : Parent.BackColor;
+            graphics.Clear(background.A == 255 ? background : UiTheme.Surface);
+        }
+        // Native themed CheckBox transparency can copy sibling text into the
+        // backing buffer when a flow row moves. Every frame owns all its pixels.
+        protected override void OnPaintBackground(PaintEventArgs e) { ClearBackground(e.Graphics); }
+        protected override void OnParentChanged(EventArgs e) { base.OnParentChanged(e); Invalidate(); }
         protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
         protected override void OnCheckedChanged(EventArgs e) { base.OnCheckedChanged(e); Invalidate(); }
         protected override void OnPaint(PaintEventArgs e)
         {
-            Graphics g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
+            Graphics g = e.Graphics; ClearBackground(g); g.SmoothingMode = SmoothingMode.AntiAlias;
             float scale = g.DpiX / 96f;
             int w = (int)(31 * scale), h = (int)(17 * scale), x = Math.Max(0, Width - w - 2), y = (Height - h) / 2;
             Color fill = !Enabled ? Color.FromArgb(224, 217, 208) : Checked ? UiTheme.Accent : hover ? Color.FromArgb(195, 180, 161) : Color.FromArgb(209, 198, 184);

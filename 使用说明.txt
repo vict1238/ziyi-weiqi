@@ -1,20 +1,20 @@
-﻿梓懿围棋 1.8
+梓懿围棋 1.8
 
 启动
 适用于 Windows 10 / 11 64 位、.NET Framework 4.8。
-已有v1.4.0完整GPU包，或已升级至v1.5.0/v1.6.0/v1.7.0：关闭程序，将v1.8.0升级包内文件解压到原“梓懿围棋.exe”所在目录，覆盖同名文件，再运行更新后的程序。保留相邻的cuda和gpu文件夹，无需重下引擎或模型。
-首次使用GPU：先下载并解压v1.4.0基础包，再将v1.8.0升级包内文件解压到同一程序目录并覆盖，最后双击“梓懿围棋.exe”。
+已有v1.4.0完整GPU包，或已升级至v1.5.0/v1.6.0/v1.7.0/v1.8.0：关闭程序，将v1.8.1升级包内文件解压到原“梓懿围棋.exe”所在目录，覆盖同名文件，再运行更新后的程序。保留相邻的cuda和gpu文件夹，无需重下引擎或模型。
+首次使用GPU：先下载并解压v1.4.0基础包，再将v1.8.1升级包内文件解压到同一程序目录并覆盖，最后双击“梓懿围棋.exe”。
 本版升级包更新主程序、说明与许可；CUDA/OpenCL引擎、运行库和两个GPU模型沿用v1.4.0基础包。
 NVIDIA 电脑优先使用 CUDA；配套运行库由基础包提供，无需安装完整 CUDA Toolkit，仍需兼容显卡和驱动。
 其他显卡可使用 OpenCL；首次加载新模型或棋盘尺寸时可能调优数分钟，界面显示启动状态并支持取消。
 CPU 单文件已内置 KataGo 1.14.1 与 g170 b10。引擎和模型准备好后，下棋可离线进行。
 
 下载
-v1.8.0发布页：https://github.com/vict1238/ziyi-weiqi/releases/tag/v1.8.0
-升级包：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.0/ziyi-weiqi-Windows-Update-v1.8.0.zip
-CPU单文件：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.0/ziyi-weiqi-v1.8.0.exe
-完整源码：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.0/ziyi-weiqi-source-v1.8.0.zip
-校验清单：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.0/SHA256SUMS.txt
+v1.8.1发布页：https://github.com/vict1238/ziyi-weiqi/releases/tag/v1.8.1
+升级包：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-Windows-Update-v1.8.1.zip
+CPU单文件：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-v1.8.1.exe
+完整源码：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-source-v1.8.1.zip
+校验清单：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/SHA256SUMS.txt
 v1.4.0 GPU基础包：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-Windows-CUDA-v1.4.0.zip
 
 界面与导航
@@ -125,7 +125,7 @@ NVIDIA运行库适用随包的专有许可；应用MIT许可不替代NVIDIA条�
 源码构建
 在项目根目录依次运行 .\build.ps1、.\prepare-gpu.ps1、.\prepare-cuda.ps1。
 准备脚本固定官方下载版本并校验长度/SHA256，-SourceCache可复用缓存。
-输出为 release\梓懿围棋-v1.8.0，GPU文件位于相邻的gpu、cuda目录。无需额外NuGet包。
+输出为 release\梓懿围棋-v1.8.1，GPU文件位于相邻的gpu、cuda目录。无需额外NuGet包。
 .\build.ps1 -Checks执行图像识别、透视、规则、棋谱、坐标、局部研究、棋子手数、配置、声音及真实CPU检查。
 桌面检查：--ui-test 报告路径；OpenCL检查：--gpu-test 报告路径；CUDA检查：--cuda-test 报告路径。
 GPU检查末尾可再传模型ID，选择旧b18。

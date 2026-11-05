@@ -51,7 +51,7 @@ namespace GoDesk
             AddSection(nav, "review", "复盘", "history", "NavReview", delegate { ShowWorkspace("review"); });
             AddSection(nav, "image", "截图识别", "camera", "ImportBoardImage", delegate { ImportBoardImage(); });
             AddSection(nav, "settings", "设置", "settings", "NavSettings", delegate { ShowWorkspace("settings"); });
-            Label navNote = new Label { Text = "梓懿围棋\r\nv1.8.0", Width = 94, Height = 55, ForeColor = muted, Margin = new Padding(6, 28, 0, 0), Font = new Font(Font.FontFamily, 8f) }; nav.Controls.Add(navNote);
+            Label navNote = new Label { Text = "梓懿围棋\r\nv1.8.1", Width = 94, Height = 55, ForeColor = muted, Margin = new Padding(6, 28, 0, 0), Font = new Font(Font.FontFamily, 8f) }; nav.Controls.Add(navNote);
             pageContainer = new Panel { Dock = DockStyle.Fill, Padding = new Padding(9, 0, 0, 0) };
             workspace = new Panel { Dock = DockStyle.Fill, Name = "PlayWorkspace" };
             workspaceTitle = new Label { Text = "本地对弈与复盘", Dock = DockStyle.Top, Height = 38, Font = new Font(Font.FontFamily, 11, FontStyle.Bold), ForeColor = UiTheme.Accent, Padding = new Padding(3, 8, 0, 0) };
@@ -68,7 +68,7 @@ namespace GoDesk
             boardCard.Controls.Add(board); boardCard.Controls.Add(boardHeader);
             WarmCard controls = new WarmCard { Dock = DockStyle.Bottom, Height = 112, Padding = new Padding(10, 7, 10, 7), Name = "ReviewControls" };
             reviewControls = controls;
-            FlowLayoutPanel historyRow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 35, WrapContents = false, Margin = Padding.Empty };
+            FlowLayoutPanel historyRow = new FlowLayoutPanel { Name = "HistoryActions", Dock = DockStyle.Top, Height = 35, WrapContents = false, Margin = Padding.Empty };
             firstButton = IconButton("first", "首手", delegate { Navigate(0); });
             prevButton = IconButton("previous", "上一手", delegate { Navigate(game.Position - 1); });
             nextButton = IconButton("next", "下一手", delegate { Navigate(game.Position + 1); });
@@ -77,7 +77,7 @@ namespace GoDesk
             jumpMove = new NumericUpDown { Name = "JumpToMove", Width = 65, Minimum = 0, Maximum = 0, Height = 29, Margin = new Padding(12, 3, 0, 0) };
             jumpMove.ValueChanged += delegate { if (!updating) Navigate((int)jumpMove.Value); };
             historyRow.Controls.Add(firstButton); historyRow.Controls.Add(prevButton); historyRow.Controls.Add(moveLabel); historyRow.Controls.Add(nextButton); historyRow.Controls.Add(lastButton); historyRow.Controls.Add(jumpMove);
-            FlowLayoutPanel studyRow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 34, WrapContents = false, Margin = Padding.Empty };
+            FlowLayoutPanel studyRow = new FlowLayoutPanel { Name = "StudyActions", Dock = DockStyle.Top, Height = 34, WrapContents = false, Margin = Padding.Empty };
             selectStudyButton = MakeButton("框选局部", 112, delegate { SelectStudyRegion(); }); selectStudyButton.Name = "SelectStudyRegion"; SetIcon(selectStudyButton, "target");
             clearStudyButton = MakeButton("退出局部", 100, delegate { ClearStudyRegion(); }); clearStudyButton.Name = "ClearStudyRegion";
             globalComparisonButton = MakeButton("全局对比", 108, async delegate { await CompareGloballyAsync(); }); globalComparisonButton.Name = "GlobalComparison";
@@ -137,13 +137,15 @@ namespace GoDesk
             evaluation.Controls.Add(evaluationLabel); evaluation.Controls.Add(evaluationBar); evaluation.Controls.Add(detailLabel); evaluation.Controls.Add(new Label { Name = "TimelineScope", Text = "全盘胜率历史 · 未分析处留空", Height = 16, Font = new Font(Font.FontFamily, 7.5f), ForeColor = muted, Margin = Padding.Empty }); evaluation.Controls.Add(winrateChart); evaluation.Controls.Add(candidateTable);
             showVariationButton = MakeButton("查看后续走法", 264, delegate { variationExpanded = !variationExpanded; UpdateUi(); }); showVariationButton.Name = "ShowVariation"; evaluation.Controls.Add(showVariationButton); evaluation.Controls.Add(variationLabel);
 
-            FlowLayoutPanel moves = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 35, WrapContents = false, Margin = Padding.Empty };
+            FlowLayoutPanel moves = new FlowLayoutPanel { Name = "GameActions", Dock = DockStyle.Bottom, Height = 35, WrapContents = false, Margin = Padding.Empty };
             passButton = MakeButton("停一手", 129, delegate { PassMove(); }); passButton.Name = "Pass";
             undoButton = MakeButton("悔棋", 129, delegate { UndoMove(); }); undoButton.Name = "Undo"; SetIcon(undoButton, "undo");
             Button save = MakeButton("保存棋谱", 129, delegate { SaveSgf(); }); save.Name = "SaveSgf"; SetIcon(save, "save");
             Button image = MakeButton("截图摆棋", 129, delegate { ImportBoardImage(); }); image.Name = "ImportImageShortcut"; SetIcon(image, "camera");
             passButton.Width = 96; undoButton.Width = 92; save.Width = 114; image.Width = 114;
             foreach (Button button in new Button[] { passButton, undoButton, save, image }) { button.Margin = new Padding(0, 1, 7, 0); moves.Controls.Add(button); } controls.Controls.Add(moves);
+            foreach (FlowLayoutPanel row in new FlowLayoutPanel[] { historyRow, studyRow, moves })
+                row.SizeChanged += delegate(object sender, EventArgs e) { CenterToolbarRow((FlowLayoutPanel)sender); };
             columns.Controls.Add(boardColumn, 0, 0); columns.Controls.Add(sideHost, 1, 0);
             workspace.Controls.Add(columns); workspace.Controls.Add(workspaceTitle);
             BuildSettingsWorkspace(); pageContainer.Controls.Add(workspace); pageContainer.Controls.Add(settingsWorkspace);
@@ -163,6 +165,14 @@ namespace GoDesk
         private Button IconButton(string icon, string accessible, EventHandler click)
         { Button button = MakeButton("", 35, click); button.Height = 29; button.Margin = new Padding(0, 0, 4, 0); button.AccessibleName = accessible; SetIcon(button, icon); tooltips.SetToolTip(button, accessible); return button; }
         private static void SetIcon(Button button, string icon) { WarmButton warm = button as WarmButton; if (warm != null) warm.IconName = icon; }
+        private static void CenterToolbarRow(FlowLayoutPanel row)
+        {
+            if (UiTheme.Scaling) return;
+            int width = 0;
+            foreach (Control child in row.Controls) if (child.Visible) width += child.Width + child.Margin.Horizontal;
+            int left = Math.Max(0, (row.ClientSize.Width - width) / 2);
+            if (row.Padding.Left != left) row.Padding = new Padding(left, 0, 0, 0);
+        }
         private FlowLayoutPanel SideCard(string title, string icon)
         {
             WarmCard card = new WarmCard { Title = title, IconName = icon, Width = 296, Height = 140, Margin = new Padding(0, 0, 0, 10) };
@@ -202,7 +212,7 @@ namespace GoDesk
             settingsProfile = SettingsCard(cards, "引擎与模型", "cpu", "选择 CUDA、OpenCL 或 CPU，以及带日期的模型。", "引擎 / 模型设置…", "SettingsEngine", delegate { ShowEngineSettings(this); });
             settingsRules = SettingsCard(cards, "对局与声音", "settings", "棋盘规则、贴目、双向让子和落子音量。", "规则与声音设置…", "SettingsRules", delegate { GameSettings(); });
             settingsDepth = SettingsCard(cards, "计算深度", "chart", "选择预设、自定义搜索次数或持续思考。", "计算深度设置…", "SettingsDepth", delegate { ShowDepthSettings(this); });
-            Label about = SettingsCard(cards, "关于梓懿围棋", "help", Tribute + "\r\nv1.8.0 · 本地对弈、AI 分析与截图研究", "关于梓懿围棋", "SettingsAbout", delegate { ShowAbout(); });
+            Label about = SettingsCard(cards, "关于梓懿围棋", "help", Tribute + "\r\nv1.8.1 · 本地对弈、AI 分析与截图研究", "关于梓懿围棋", "SettingsAbout", delegate { ShowAbout(); });
             WarmCard aboutCard = (WarmCard)about.Parent; aboutCard.Height = 170;
             FlowLayoutPanel aboutActions = (FlowLayoutPanel)aboutCard.Controls[1];
             Button usage = MakeButton("使用说明", 210, delegate { ShowHelp(); }); usage.Name = "SettingsHelp";
@@ -253,6 +263,8 @@ namespace GoDesk
                     foreach (Control child in reviewControls.Controls) if (child != studyRegionStatus) footerHeight += child.Height;
                     if (studyRegionStatus.Visible) footerHeight += TextRenderer.MeasureText("局部研究", studyRegionStatus.Font).Height * 2;
                     reviewControls.Height = footerHeight;
+                    foreach (Control child in reviewControls.Controls)
+                    { FlowLayoutPanel row = child as FlowLayoutPanel; if (row != null) CenterToolbarRow(row); }
                 }
                 automaticBox.Enabled = !reviewMode; automaticBox.Text = reviewMode ? "复盘中暂停自动应手" : "AI 自动应手";
                 updating = true; jumpMove.Maximum = game.Moves.Count; jumpMove.Value = Math.Min(game.Position, game.Moves.Count); updating = false;
@@ -271,7 +283,7 @@ namespace GoDesk
         }
         private void ShowAbout()
         {
-            MessageBox.Show(this, "梓懿围棋 1.8.0\r\n\r\n" + Tribute + "\r\n\r\n本地对弈 · AI 分析 · 截图识别 · 复盘研究\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\n\r\n搜索次数表示计算量，不是向后推演的手数或人类段位。\r\n截图导入的是初始摆子局面，不能恢复原始手数与劫争历史。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "梓懿围棋 1.8.1\r\n\r\n" + Tribute + "\r\n\r\n本地对弈 · AI 分析 · 截图识别 · 复盘研究\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\n\r\n搜索次数表示计算量，不是向后推演的手数或人类段位。\r\n截图导入的是初始摆子局面，不能恢复原始手数与劫争历史。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

@@ -1,0 +1,35 @@
+# 梓懿围棋 v1.8.1
+
+2026-11-05：修复真实 Windows 桌面上的文字残影，整理底部工具栏对齐。v1.8.0 已撤下公开下载，请升级至本版。
+
+- 修复“AI 自动应手”开关内残留 CUDA 模型说明、“显示手数”开关内残留“全局对比”等文字的问题。开关每次重绘都会清除背景。
+- 最大化或调整窗口宽度时，底部逐手导航、局部研究与棋谱操作按可用空间居中，小窗口保留原按钮尺寸与可达性。
+- 新增带旧文字污染底图的重绘检查，覆盖开关状态、禁用状态、CPU / GPU 配置、窗口调整和多种绘制密度。
+- 保留现有界面风格、CUDA / OpenCL / CPU、模型与日期、搜索次数、让子、声音、局部研究、手数、SGF、截图与照片摆棋。
+
+## 下载
+
+| 文件 | 用途 |
+| --- | --- |
+| [ziyi-weiqi-Windows-Update-v1.8.1.zip](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-Windows-Update-v1.8.1.zip) | 升级包：主程序、说明与许可 |
+| [ziyi-weiqi-v1.8.1.exe](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-v1.8.1.exe) | 内置轻量 b10 模型的 CPU 单文件程序 |
+| [ziyi-weiqi-source-v1.8.1.zip](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-source-v1.8.1.zip) | 完整源码、CPU 资源、许可与 GPU 准备脚本 |
+| [SHA256SUMS.txt](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/SHA256SUMS.txt) | 本版三个发布文件的 SHA-256 校验清单 |
+
+## 升级方法
+
+本次界面改版继续使用 v1.4.0 的 CUDA / OpenCL 引擎、运行库和两个 GPU 模型。
+
+- **已有 v1.4.0 完整 GPU 包，或已升级到 v1.5.0–v1.8.0**：关闭程序，将 v1.8.1 升级包内文件解压到原 `梓懿围棋.exe` 所在目录并覆盖。保留相邻的 `cuda` 和 `gpu` 文件夹，无需重下引擎或模型。
+- **首次使用 GPU**：先解压 [v1.4.0 CUDA / OpenCL 基础包](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-Windows-CUDA-v1.4.0.zip)，再把 v1.8.1 升级包解压到同一目录覆盖，最后运行 `梓懿围棋.exe`。
+- **只使用 CPU**：下载 v1.8.1 单文件程序，即可使用内置 CPU 引擎与轻量模型。
+
+CUDA 运行库由基础包提供，无需安装完整 CUDA Toolkit，仍需兼容的 NVIDIA 显卡和驱动。应用源码为 MIT，新增视觉素材与图标的来源、许可见第三方说明；NVIDIA 运行库与模型遵循各自的原始许可。
+
+## 使用提示与验证
+
+胜率和领地为所选引擎、模型及搜索预算下的估计。历史图的空白表示该局面尚未分析；局部条件下的分析应与全盘结果分别理解。
+
+图片导入前请核对格线和棋子。照片反光、遮挡及大角度拍摄可能需要校准与手修。截图通常无法恢复手数、既往提子和劫历史；导入棋子作为初始摆子，后续新落子开始编号。局部题图的盘外缺失信息会影响征子、劫争和全盘判断。
+
+视觉对照见 `design-qa.md`，改版流程见 `qa/redesign-test.txt`，具体界面、规则、图片识别及真实 CPU / CUDA 检查见 `验证记录.txt`。性能表沿用 v1.4.0 的 36 次正式对比，本版未以界面改动重新宣称加速倍数。v1.1.0–v1.7.0 的历史 Release 和附件继续保留；v1.8.0 保留为草稿，停止公开下载。

@@ -61,7 +61,7 @@ namespace GoDesk
                     Capture(args[1]);
                     return 0;
                 }
-                if (args.Length > 1 && args[0] == "--ui-test")
+                if (args.Length > 1 && (args[0] == "--ui-test" || args[0] == "--layout-test"))
                     return RunUiChecks(args);
                 Application.Run(new MainForm());
                 return 0;
@@ -318,9 +318,16 @@ namespace GoDesk
                 {
                     try
                     {
-                        string result = await UiSmoke.RunAsync(form, Path.GetDirectoryName(Path.GetFullPath(args[1])));
-                        result += Environment.NewLine + await ImageImportSmoke.RunAsync(form, Path.GetDirectoryName(Path.GetFullPath(args[1])));
-                        result += Environment.NewLine + await RedesignSmoke.RunAsync(form, Path.GetDirectoryName(Path.GetFullPath(args[1])));
+                        string folder = Path.GetDirectoryName(Path.GetFullPath(args[1]));
+                        string result;
+                        if (args[0] == "--layout-test") result = await LayoutRegressionSmoke.RunAsync(form, folder);
+                        else
+                        {
+                            result = await UiSmoke.RunAsync(form, folder);
+                            result += Environment.NewLine + await ImageImportSmoke.RunAsync(form, folder);
+                            result += Environment.NewLine + await RedesignSmoke.RunAsync(form, folder);
+                            result += Environment.NewLine + await LayoutRegressionSmoke.RunAsync(form, folder);
+                        }
                         WriteReport(args, "PASS\n" + result);
                     }
                     catch (Exception error)
