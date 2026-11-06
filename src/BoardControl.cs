@@ -24,6 +24,7 @@ namespace GoDesk
     {
         private GoGame game;
         private AnalysisResult analysis;
+        private Move reviewMove;
         private bool showHints, showOwnership, showMoveNumbers, selectingRegion, draggingRegion, suppressRegionClick;
         private StudyRegion studyRegion;
         private Point regionStart, regionEnd;
@@ -44,6 +45,7 @@ namespace GoDesk
             }
         }
         public AnalysisResult Analysis { get { return analysis; } set { analysis = value; Invalidate(); } }
+        internal Move ReviewMove { get { return reviewMove; } set { reviewMove = value; Invalidate(); } }
         public bool ShowHints { get { return showHints; } set { showHints = value; Invalidate(); } }
         public bool ShowOwnership { get { return showOwnership; } set { showOwnership = value; Invalidate(); } }
         public bool ShowMoveNumbers { get { return showMoveNumbers; } set { showMoveNumbers = value; Invalidate(); } }
@@ -145,6 +147,14 @@ namespace GoDesk
             }
             if (showMoveNumbers) DrawMoveNumbers(g);
             DrawHints(g);
+            if (reviewMove != null && !reviewMove.IsPass && reviewMove.X >= 0 && reviewMove.X < game.Size && reviewMove.Y >= 0 && reviewMove.Y < game.Size)
+            {
+                float radius = step * .43f;
+                float x = grid.Left + reviewMove.X * step - radius;
+                float y = grid.Top + reviewMove.Y * step - radius;
+                using (Pen mark = new Pen(Color.FromArgb(43, 85, 158), Math.Max(1.7f, step * .07f)))
+                    g.DrawEllipse(mark, x, y, radius * 2, radius * 2);
+            }
         }
 
         private bool RegionFits(StudyRegion region)

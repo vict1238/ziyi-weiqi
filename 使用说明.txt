@@ -1,20 +1,20 @@
-梓懿围棋 1.8
+﻿梓懿围棋 1.8
 
 启动
 适用于 Windows 10 / 11 64 位、.NET Framework 4.8。
-已有v1.4.0完整GPU包，或已升级至v1.5.0/v1.6.0/v1.7.0/v1.8.0：关闭程序，将v1.8.1升级包内文件解压到原“梓懿围棋.exe”所在目录，覆盖同名文件，再运行更新后的程序。保留相邻的cuda和gpu文件夹，无需重下引擎或模型。
-首次使用GPU：先下载并解压v1.4.0基础包，再将v1.8.1升级包内文件解压到同一程序目录并覆盖，最后双击“梓懿围棋.exe”。
+已有v1.4.0完整GPU包，或已升级至v1.5.0/v1.6.0/v1.7.0/v1.8.1：关闭程序，将v2.0.0升级包内文件解压到原“梓懿围棋.exe”所在目录，覆盖同名文件，再运行更新后的程序。保留相邻的cuda和gpu文件夹，无需重下引擎或模型。
+首次使用GPU：先下载并解压v1.4.0基础包，再将v2.0.0升级包内文件解压到同一程序目录并覆盖，最后双击“梓懿围棋.exe”。
 本版升级包更新主程序、说明与许可；CUDA/OpenCL引擎、运行库和两个GPU模型沿用v1.4.0基础包。
 NVIDIA 电脑优先使用 CUDA；配套运行库由基础包提供，无需安装完整 CUDA Toolkit，仍需兼容显卡和驱动。
 其他显卡可使用 OpenCL；首次加载新模型或棋盘尺寸时可能调优数分钟，界面显示启动状态并支持取消。
 CPU 单文件已内置 KataGo 1.14.1 与 g170 b10。引擎和模型准备好后，下棋可离线进行。
 
 下载
-v1.8.1发布页：https://github.com/vict1238/ziyi-weiqi/releases/tag/v1.8.1
-升级包：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-Windows-Update-v1.8.1.zip
-CPU单文件：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-v1.8.1.exe
-完整源码：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-source-v1.8.1.zip
-校验清单：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/SHA256SUMS.txt
+v2.0.0发布页：https://github.com/vict1238/ziyi-weiqi/releases/tag/v2.0.0
+升级包：https://github.com/vict1238/ziyi-weiqi/releases/download/v2.0.0/ziyi-weiqi-Windows-Update-v2.0.0.zip
+CPU单文件：https://github.com/vict1238/ziyi-weiqi/releases/download/v2.0.0/ziyi-weiqi-v2.0.0.exe
+完整源码：https://github.com/vict1238/ziyi-weiqi/releases/download/v2.0.0/ziyi-weiqi-source-v2.0.0.zip
+校验清单：https://github.com/vict1238/ziyi-weiqi/releases/download/v2.0.0/SHA256SUMS.txt
 v1.4.0 GPU基础包：https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-Windows-CUDA-v1.4.0.zip
 
 界面与导航
@@ -104,9 +104,12 @@ RTX 4060 Laptop 8GB、同一个最强模型的36次对比中位数：
 “结束思考并落子”采用当前最佳点；“结束分析”保留推荐或领地结果。
 新局、悔棋、棋谱导航、切换引擎和关闭程序会取消相应计算，隔离迟到进度和结果。
 
-联机对弈
-当前为本地对弈与复盘，“双方”是在同一台电脑操作黑白。
-公网联机需部署房间服务器，提供建房/加入、落子校验、棋局同步及断线重连；设计见源码 docs/ONLINE-PLAY.md。
+好友房与整盘复盘
+两人均打开2.0。左栏点联机，房主选择Tailscale或局域网、切磋或研讨及棋盘设置，创建后复制邀请，好友粘贴加入。Tailscale需已登录且好友可访问房主设备，局域网需两台设备互通。Windows提示网络访问时允许相应连接，加入失败可核对所选网络和防火墙。
+切磋中按黑白轮流落子，AI与摆棋入口锁定。可停着、申请悔棋、认输、保存SGF，双停后由双方确认结果。短时断线保留座位，房主须保持窗口打开。结束后可将对局复制到研讨房。
+研讨中双方可摆黑白、擦除、指定下一手、试下与回看。确认摆子后再运行AI，分享时附带模型和搜索量。清盘或导入替换整盘前需双方确认。
+主界面的整盘分析可导入SGF，选择快、标准、精细或自定义搜索次数。查看测评、吻合度、胜率目差、问题手、六档分布。选择问题手可跳到落子前并复算。暂停保留当前窗口内的结果。
+统计按落子方比较同一局面的AI首选和实战着点。首选坐标精确吻合算一选；好手含一选及目损不超过1.5目，默认恶手为至少6目。阈值可调，有效评估手数为比例分母，终局停着单列。
 
 棋谱与快捷键
 支持SGF主变化、初始摆子、先行方及中国 / 日本规则；识别野狐KM[375]等贴目编码并显示转换提示。
@@ -125,7 +128,7 @@ NVIDIA运行库适用随包的专有许可；应用MIT许可不替代NVIDIA条�
 源码构建
 在项目根目录依次运行 .\build.ps1、.\prepare-gpu.ps1、.\prepare-cuda.ps1。
 准备脚本固定官方下载版本并校验长度/SHA256，-SourceCache可复用缓存。
-输出为 release\梓懿围棋-v1.8.1，GPU文件位于相邻的gpu、cuda目录。无需额外NuGet包。
+输出为 release\梓懿围棋-v2.0.0，GPU文件位于相邻的gpu、cuda目录。无需额外NuGet包。
 .\build.ps1 -Checks执行图像识别、透视、规则、棋谱、坐标、局部研究、棋子手数、配置、声音及真实CPU检查。
 桌面检查：--ui-test 报告路径；OpenCL检查：--gpu-test 报告路径；CUDA检查：--cuda-test 报告路径。
 GPU检查末尾可再传模型ID，选择旧b18。

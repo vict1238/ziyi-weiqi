@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -36,7 +37,7 @@ namespace GoDesk
                         Environment.NewLine + LocalStudyTests.Run() +
                         Environment.NewLine + MoveNumbersTests.Run() +
                         Environment.NewLine + BoardImageRecognizerTests.Run() +
-                        Environment.NewLine + RedesignTests.Run();
+                        Environment.NewLine + RedesignTests.Run() + Environment.NewLine + WholeGameReviewTests.Run();
                     WriteReport(args, "PASS\n" + result);
                     return 0;
                 }
@@ -46,6 +47,27 @@ namespace GoDesk
                     WriteReport(args, "PASS\n" + result);
                     return 0;
                 }
+                if (args.Length > 0 && (args[0] == "--review-engine-test" || args[0] == "--review-cuda-test"))
+                {
+                    EngineSettings settings = args[0] == "--review-cuda-test" ? EngineSettings.CreateCuda() : EngineSettings.CreateCpu();
+                    string result = WholeGameReviewTests.RunEngineChecksAsync(settings).GetAwaiter().GetResult();
+                    WriteReport(args, "PASS\n" + result);
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--online-test")
+                {
+                    var results = new StringBuilder(OnlineRoomTests.RunAsync(IPAddress.Loopback).GetAwaiter().GetResult());
+                    for (int i = 2; i < args.Length; i++)
+                    {
+                        IPAddress address = IPAddress.Parse(args[i]);
+                        string verified = OnlineRoomTests.RunAsync(address).GetAwaiter().GetResult();
+                        results.AppendLine().Append(verified.Replace(address.ToString(), "本机网络接口"));
+                    }
+                    WriteReport(args, "PASS\n" + results);
+                    return 0;
+                }
+                if (args.Length > 1 && args[0] == "--review-ui-test")
+                    return RunReviewUiChecks(args);
                 if (args.Length > 0 && (args[0] == "--gpu-test" || args[0] == "--cuda-test"))
                 {
                     string modelId = args.Length > 2 ? args[2] : ModelCatalog.StrongestId;
@@ -336,6 +358,30 @@ namespace GoDesk
                         WriteReport(args, "FAIL\n" + error);
                         exitCode = 1;
                     }
+                    finally { form.Close(); }
+                };
+                Application.Run(form);
+            }
+            return exitCode;
+        }
+
+        private static int RunReviewUiChecks(string[] args)
+        {
+            int exitCode = 0;
+            GoGame game = GoGame.FromSgf("(;SZ[9]KM[6.5]AB[ee]PL[W];W[aa];B[cc];W[hh];B[gg];W[];B[])");
+            using (var form = new WholeGameReviewForm(game, EngineSettings.CreateCpu()))
+            {
+                form.StartPosition = FormStartPosition.Manual;
+                form.Location = new Point(-20000, -20000);
+                form.ShowInTaskbar = false;
+                form.Shown += async delegate
+                {
+                    try
+                    {
+                        string folder = Path.GetDirectoryName(Path.GetFullPath(args[1]));
+                        WriteReport(args, "PASS\n" + await form.RunSmokeAsync(folder));
+                    }
+                    catch (Exception error) { exitCode = 1; WriteReport(args, "FAIL\n" + error); }
                     finally { form.Close(); }
                 };
                 Application.Run(form);

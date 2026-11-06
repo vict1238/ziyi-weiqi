@@ -2,7 +2,7 @@
 
 **致敬六大至尊围棋王“梓”和“懿”。**
 
-梓懿围棋是可离线运行的 Windows 围棋对弈与复盘工具，使用本机 KataGo 计算着法。当前版本 **1.8.1** 修复“AI 自动应手”和“显示手数”开关的文字残影，并整理宽窗口中的底部工具栏对齐。v1.8.0 已撤下公开下载。新版采用暖米色与浅木纹棋盘、左侧四项导航、分组卡片、真实分析历史与推荐列表，以及分步骤截图识别。保留截图与实体照片摆棋、局部研究、棋子手数、双向让子、CUDA、OpenCL、CPU 和带日期的模型选择。已有 v1.4.0 完整 GPU 包或 v1.5.0–v1.8.0 升级版可直接应用本版升级包；GPU 引擎、运行库和模型沿用 v1.4.0。
+梓懿围棋是 Windows 围棋对弈、研讨与复盘工具。**2.0** 加入 Tailscale 和局域网好友房，双方可以切磋、一起摆棋、试下并分享本机 KataGo 的分析结果。打开 SGF 即可做整盘复盘，查看吻合度、目损、问题手和发挥分布。
 
 [下载最新版本](https://github.com/vict1238/ziyi-weiqi/releases/latest) · [版本记录](CHANGELOG.md) · [使用说明](使用说明.txt)
 
@@ -14,15 +14,15 @@
 
 | 下载 | 用途 |
 | --- | --- |
-| [v1.8.1 升级包](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-Windows-Update-v1.8.1.zip) | 主程序、说明与许可；解压到原程序目录，覆盖同名文件 |
-| [v1.8.1 CPU 单文件程序](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-v1.8.1.exe) | 内置轻量 CPU 引擎与 b10 模型，可直接运行 |
-| [v1.8.1 完整源码](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/ziyi-weiqi-source-v1.8.1.zip) | 源码、CPU 资源与固定版本 GPU 准备脚本 |
-| [v1.8.1 SHA-256 校验清单](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.8.1/SHA256SUMS.txt) | 核对本版三个发布文件 |
+| [v2.0.0 升级包](https://github.com/vict1238/ziyi-weiqi/releases/download/v2.0.0/ziyi-weiqi-Windows-Update-v2.0.0.zip) | 主程序、说明与许可；解压到原程序目录，覆盖同名文件 |
+| [v2.0.0 CPU 单文件程序](https://github.com/vict1238/ziyi-weiqi/releases/download/v2.0.0/ziyi-weiqi-v2.0.0.exe) | 内置轻量 CPU 引擎与 b10 模型，可直接运行 |
+| [v2.0.0 完整源码](https://github.com/vict1238/ziyi-weiqi/releases/download/v2.0.0/ziyi-weiqi-source-v2.0.0.zip) | 源码、CPU 资源与固定版本 GPU 准备脚本 |
+| [v2.0.0 SHA-256 校验清单](https://github.com/vict1238/ziyi-weiqi/releases/download/v2.0.0/SHA256SUMS.txt) | 核对本版三个发布文件 |
 | [v1.4.0 CUDA / OpenCL 基础包](https://github.com/vict1238/ziyi-weiqi/releases/download/v1.4.0/ziyi-weiqi-Windows-CUDA-v1.4.0.zip) | 新 GPU 用户先下载：包含两种 GPU 引擎、最强 tf3、原 b18 与 CUDA 运行库 |
 
-**已有 v1.4.0 完整 GPU 包，或已升级到 v1.5.0 / v1.6.0 / v1.7.0 / v1.8.0**：关闭梓懿围棋，将 v1.8.1 升级包内文件解压到原来的 `梓懿围棋.exe` 所在目录并覆盖同名文件，再运行更新后的程序。保留原有的 `cuda`、`gpu` 文件夹，无需重新下载引擎或模型。
+**已有 v1.4.0 完整 GPU 包，或已升级到 v1.5.0 / v1.6.0 / v1.7.0 / v1.8.1**：关闭梓懿围棋，将 v2.0.0 升级包内文件解压到原来的 `梓懿围棋.exe` 所在目录并覆盖同名文件，再运行更新后的程序。保留原有的 `cuda`、`gpu` 文件夹，无需重新下载引擎或模型。
 
-**首次使用 GPU**：先下载并解压上表的 v1.4.0 基础包，再将 v1.8.1 升级包内文件解压到同一程序目录并覆盖，最后运行 `梓懿围棋.exe`。本版提供升级包，GPU 依赖继续使用相同的 v1.4.0 基础包。
+**首次使用 GPU**：先下载并解压上表的 v1.4.0 基础包，再将 v2.0.0 升级包内文件解压到同一程序目录并覆盖，最后运行 `梓懿围棋.exe`。本版提供升级包，GPU 依赖继续使用相同的 v1.4.0 基础包。
 
 完整包中的 `cuda`、`gpu` 文件夹须与主程序相邻，两个 GPU 后端共用 `gpu/models`。CUDA 运行库已随包提供，**无需安装完整 CUDA Toolkit**；仍需兼容的 NVIDIA 显卡和驱动。其他显卡可选择 OpenCL，首次加载模型或棋盘尺寸时可能调优数分钟。准备完成后，下棋无需联网或账号。
 
@@ -32,7 +32,7 @@ Windows 智能应用控制可能阻止未获信任的引擎，程序会显示具
 
 ## 界面与导航
 
-左侧导航提供 **对局、复盘、截图识别、设置**。对局和复盘查看同一盘棋，切换页面保留当前局面、手数与研究范围；截图确认导入时才建立新的研究局面。
+左侧导航提供 **对局、复盘、联机、截图识别、设置**。对局和复盘查看同一盘棋。联机使用独立的房间棋盘，整盘分析从对局设置卡片打开。
 
 - **对局与复盘**：棋盘位于中央，下面集中放逐手导航与棋谱操作。右侧卡片汇总对局、引擎、AI 操作及形势与推荐，常用操作按用途分组。
 - **形势与推荐**：推荐列表显示引擎真实返回的着点、胜率与目差。胜率历史仅绘制实际分析过的全盘局面，未分析手数留空；局部结果另行标识，不混入全盘曲线，切换模型或后端后清除旧分析数据。
@@ -85,9 +85,17 @@ Windows 智能应用控制可能阻止未获信任的引擎，程序会显示具
 
 ![现存棋子的原始落子手数](qa/desktop-move-numbers.png)
 
-## 联机对弈
+## 联机和整盘分析
 
-当前程序使用本地 KataGo，“双方 · 自由复盘”表示同一台电脑操作黑白。公网人对人对弈需要新增房间服务器、玩家身份、落子同步与断线恢复服务；实现方案见 [联机设计](docs/ONLINE-PLAY.md)。
+在左栏点「联机」，选择切磋房或研讨房。房主选 Tailscale 或局域网地址并复制邀请，好友粘贴邀请加入。切磋房禁用本程序的 AI，研讨房允许双方摆棋、试下、导入 SGF 和分享各自的分析。
+
+在主界面点「整盘分析」，导入 SGF 或使用已载入棋谱。选择每手搜索次数，开始后可边看边算。报告包含测评、吻合度、胜率与目差、问题手和发挥分布。
+
+[网络设置、研讨流程与统计口径](docs/ONLINE-PLAY.md)
+
+![双人研讨与共享分析](qa/online-study.png)
+
+![SGF 整盘分析](qa/whole-game-review.png)
 
 ## 本版验证
 
@@ -132,7 +140,7 @@ Windows 需提供 .NET Framework 4.8 和 `Framework64\v4.0.30319\csc.exe`。项�
 .\prepare-cuda.ps1
 ```
 
-主程序输出到 `release\梓懿围棋-v1.8.1\梓懿围棋.exe`。后两步分别准备 OpenCL / 模型与 CUDA 运行库，输出到相邻的 `gpu`、`cuda` 目录；下载固定官方版本并核验长度与 SHA-256，同时保留许可。默认下载缓存为 `%LOCALAPPDATA%\GoDesk\downloads`，已有缓存可复用：
+主程序输出到 `release\梓懿围棋-v2.0.0\梓懿围棋.exe`。后两步分别准备 OpenCL / 模型与 CUDA 运行库，输出到相邻的 `gpu`、`cuda` 目录；下载固定官方版本并核验长度与 SHA-256，同时保留许可。默认下载缓存为 `%LOCALAPPDATA%\GoDesk\downloads`，已有缓存可复用：
 
 ```powershell
 .\prepare-gpu.ps1 -SourceCache 'D:\KataGo-downloads'
@@ -145,7 +153,7 @@ Windows 需提供 .NET Framework 4.8 和 `Framework64\v4.0.30319\csc.exe`。项�
 
 ```powershell
 .\build.ps1 -Checks
-Start-Process -FilePath '.\release\梓懿围棋-v1.8.1\梓懿围棋.exe' `
+Start-Process -FilePath '.\release\梓懿围棋-v2.0.0\梓懿围棋.exe' `
   -ArgumentList '--ui-test', '.\qa\ui-test.txt' -WindowStyle Hidden -Wait
 Get-Content .\qa\ui-test.txt
 ```

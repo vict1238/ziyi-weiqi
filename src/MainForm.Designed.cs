@@ -41,17 +41,18 @@ namespace GoDesk
             Panel brand = new Panel { Dock = DockStyle.Top, Height = 42, BackColor = UiTheme.Surface, Padding = new Padding(18, 0, 18, 0) };
             PictureBox logo = new PictureBox { Image = UiTheme.ResourceImage("brand.png"), SizeMode = PictureBoxSizeMode.Zoom, Location = new Point(18, 7), Size = new Size(28, 28) };
             Label title = new Label { Text = "梓懿围棋", Font = new Font("Microsoft YaHei UI", 16, FontStyle.Bold), ForeColor = ink, Location = new Point(54, 5), Size = new Size(160, 30) };
-            Label subtitle = new Label { Text = "本地对弈  ·  AI 分析  ·  复盘研究", ForeColor = muted, Location = new Point(220, 13), Size = new Size(400, 22) };
-            Label local = new Label { Text = "KataGo  /  离线运行", ForeColor = UiTheme.Accent, Dock = DockStyle.Right, Width = 210, TextAlign = ContentAlignment.MiddleRight };
+            Label subtitle = new Label { Text = "本地对弈  ·  联机研讨  ·  整盘复盘", ForeColor = muted, Location = new Point(220, 13), Size = new Size(400, 22) };
+            Label local = new Label { Text = "KataGo  /  本机计算", ForeColor = UiTheme.Accent, Dock = DockStyle.Right, Width = 210, TextAlign = ContentAlignment.MiddleRight };
             brand.Controls.Add(logo); brand.Controls.Add(title); brand.Controls.Add(subtitle); brand.Controls.Add(local);
 
             Panel shell = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 4, 12, 8), BackColor = UiTheme.Background };
             FlowLayoutPanel nav = new FlowLayoutPanel { Dock = DockStyle.Left, Width = 112, Padding = new Padding(2, 26, 8, 0), FlowDirection = FlowDirection.TopDown, WrapContents = false };
             AddSection(nav, "play", "对局", "home", "NavPlay", delegate { ShowWorkspace("play"); });
             AddSection(nav, "review", "复盘", "history", "NavReview", delegate { ShowWorkspace("review"); });
+            AddSection(nav, "online", "联机", "global", "NavOnline", delegate { OpenOnlineRoom(); });
             AddSection(nav, "image", "截图识别", "camera", "ImportBoardImage", delegate { ImportBoardImage(); });
             AddSection(nav, "settings", "设置", "settings", "NavSettings", delegate { ShowWorkspace("settings"); });
-            Label navNote = new Label { Text = "梓懿围棋\r\nv1.8.1", Width = 94, Height = 55, ForeColor = muted, Margin = new Padding(6, 28, 0, 0), Font = new Font(Font.FontFamily, 8f) }; nav.Controls.Add(navNote);
+            Label navNote = new Label { Text = "梓懿围棋\r\nv2.0.0", Width = 94, Height = 55, ForeColor = muted, Margin = new Padding(6, 28, 0, 0), Font = new Font(Font.FontFamily, 8f) }; nav.Controls.Add(navNote);
             pageContainer = new Panel { Dock = DockStyle.Fill, Padding = new Padding(9, 0, 0, 0) };
             workspace = new Panel { Dock = DockStyle.Fill, Name = "PlayWorkspace" };
             workspaceTitle = new Label { Text = "本地对弈与复盘", Dock = DockStyle.Top, Height = 38, Font = new Font(Font.FontFamily, 11, FontStyle.Bold), ForeColor = UiTheme.Accent, Padding = new Padding(3, 8, 0, 0) };
@@ -103,6 +104,8 @@ namespace GoDesk
             Button newGame = MakeButton("新对局", 129, delegate { NewGame(); }); newGame.Name = "NewGame"; SetIcon(newGame, "plus");
             Button load = MakeButton("载入棋谱", 129, delegate { OpenSgf(); }); load.Name = "OpenSgf"; SetIcon(load, "folder");
             gameCard.Controls.Add(DesignedPair(newGame, load));
+            Button fullReview = MakeButton("整盘分析", 264, delegate { OpenWholeGameReview(); });
+            fullReview.Name = "WholeGameReview"; SetIcon(fullReview, "chart"); gameCard.Controls.Add(fullReview);
 
             FlowLayoutPanel engineCard = SideCard("KataGo 引擎", "cpu");
             engineLabel = new Label { Height = 22, Text = "引擎待命", ForeColor = muted, AutoEllipsis = true, Margin = Padding.Empty, Font = new Font(Font.FontFamily, 8.3f) };
@@ -212,7 +215,7 @@ namespace GoDesk
             settingsProfile = SettingsCard(cards, "引擎与模型", "cpu", "选择 CUDA、OpenCL 或 CPU，以及带日期的模型。", "引擎 / 模型设置…", "SettingsEngine", delegate { ShowEngineSettings(this); });
             settingsRules = SettingsCard(cards, "对局与声音", "settings", "棋盘规则、贴目、双向让子和落子音量。", "规则与声音设置…", "SettingsRules", delegate { GameSettings(); });
             settingsDepth = SettingsCard(cards, "计算深度", "chart", "选择预设、自定义搜索次数或持续思考。", "计算深度设置…", "SettingsDepth", delegate { ShowDepthSettings(this); });
-            Label about = SettingsCard(cards, "关于梓懿围棋", "help", Tribute + "\r\nv1.8.1 · 本地对弈、AI 分析与截图研究", "关于梓懿围棋", "SettingsAbout", delegate { ShowAbout(); });
+            Label about = SettingsCard(cards, "关于梓懿围棋", "help", Tribute + "\r\nv2.0.0 · 本地对弈、AI 分析与截图研究", "关于梓懿围棋", "SettingsAbout", delegate { ShowAbout(); });
             WarmCard aboutCard = (WarmCard)about.Parent; aboutCard.Height = 170;
             FlowLayoutPanel aboutActions = (FlowLayoutPanel)aboutCard.Controls[1];
             Button usage = MakeButton("使用说明", 210, delegate { ShowHelp(); }); usage.Name = "SettingsHelp";
@@ -283,7 +286,7 @@ namespace GoDesk
         }
         private void ShowAbout()
         {
-            MessageBox.Show(this, "梓懿围棋 1.8.1\r\n\r\n" + Tribute + "\r\n\r\n本地对弈 · AI 分析 · 截图识别 · 复盘研究\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\n\r\n搜索次数表示计算量，不是向后推演的手数或人类段位。\r\n截图导入的是初始摆子局面，不能恢复原始手数与劫争历史。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "梓懿围棋 2.0.0\r\n\r\n" + Tribute + "\r\n\r\n本地对弈 · AI 分析 · 截图识别 · 复盘研究\r\n当前引擎 / 模型：" + engineSettings.Description + "\r\n\r\n搜索次数表示计算量，不是向后推演的手数或人类段位。\r\n截图导入的是初始摆子局面，不能恢复原始手数与劫争历史。\r\n\r\nKataGo：github.com/lightvector/KataGo", "关于梓懿围棋", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

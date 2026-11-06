@@ -37,7 +37,7 @@ namespace GoDesk
         private Label turnLabel, moveLabel, captureLabel, engineLabel, profileLabel, evaluationLabel, detailLabel, gameInfoLabel;
         private ToolStripStatusLabel statusLabel;
         private Panel evaluationBar;
-        private bool thinking, closing, updating;
+        private bool thinking, closing, updating, featureWindowOpen;
         private int generation, handicap;
         private Stone handicapColor = Stone.Black;
         private int selfPlaySession;
@@ -117,7 +117,7 @@ namespace GoDesk
         private bool HumanTurn { get { return reviewMode || humanBox.SelectedIndex == 2 || game.ToPlay == HumanColor; } }
         private long Visits { get { return selectedDepthIndex == SearchDepth.CustomIndex ? (continuousDepth ? 0 : customVisits) : SearchDepth.PresetVisits(selectedDepthIndex); } }
 
-        private void InstallEngine(EngineSettings profile)
+        private void InstallEngine(EngineSettings profile, bool clearHistory = true)
         {
             KataGoEngine replacement = new KataGoEngine(profile);
             CancelAnalysis();
@@ -127,7 +127,7 @@ namespace GoDesk
                 if (engineStatusHandler != null) engine.StatusChanged -= engineStatusHandler;
                 engine.Dispose();
             }
-            analysisTimeline.Clear();
+            if (clearHistory) analysisTimeline.Clear();
             engine = replacement;
             engineSettings = profile.Clone();
             engineStatusHandler = delegate(string text) { OnEngineStatus(session, text); };
@@ -362,11 +362,12 @@ namespace GoDesk
         }
         private async void MaybeAutoMove()
         {
-            if (currentSection != "play" || reviewMode || closing || thinking || selfPlaying || board.SelectingRegion || !automaticBox.Checked || humanBox.SelectedIndex == 2 || game.IsOver || HumanTurn) return;
+            if (featureWindowOpen || currentSection != "play" || reviewMode || closing || thinking || selfPlaying || board.SelectingRegion || !automaticBox.Checked || humanBox.SelectedIndex == 2 || game.IsOver || HumanTurn) return;
             await AnalyzeAsync(true, false);
         }
         private async Task ToggleSelfPlayAsync()
         {
+            if (featureWindowOpen) return;
             if (selfPlaying) { CancelAnalysis(); SetStatus("AI 自弈已停止。"); return; }
             if (thinking || game.IsOver || board.SelectingRegion) return;
             CancelAnalysis();
@@ -433,7 +434,7 @@ namespace GoDesk
         }
         private async Task RunAnalysisAsync(bool play, bool ownership, bool globalComparison)
         {
-            if (closing || thinking || board.SelectingRegion || (play && game.IsOver)) return;
+            if (featureWindowOpen || closing || thinking || board.SelectingRegion || (play && game.IsOver)) return;
             if (engine == null) { SetStatus("请打开引擎 / 模型设置，确认可用的引擎与模型后重试。"); return; }
             StudyRegion requestedRegion = globalComparison ? null : studyRegion;
             if (requestedRegion != null && !LocalStudy.HasLegalMove(game, requestedRegion))
