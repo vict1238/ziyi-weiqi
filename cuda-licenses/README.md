@@ -1,6 +1,6 @@
 # 梓懿围棋 CUDA runtime notices
 
-This application bundles the unmodified official KataGo 1.18.1 CUDA 12.1 / cuDNN 9.8.0 Windows x64 engine, NVIDIA CUDA runtime 12.1.105, cuBLAS 12.1.3.1, NVRTC 12.1.105, and cuDNN 9.8.0.87. They run from the application's `cuda/` directory and are used by the application's KataGo subprocess. A compatible NVIDIA GPU and driver are required. This package installs no driver or system CUDA Toolkit and makes no global PATH change; Python and SDK developer tools are not required.
+KataGo 1.18.1 for Windows x64 runs from `cuda/` with CUDA runtime 12.1.105, cuBLAS 12.1.3.1, NVRTC 12.1.105 and cuDNN 9.8.0.87. This app-local setup requires a compatible NVIDIA GPU and driver.
 
 The models remain in the application's shared `gpu/models/` directory. Their identities, dates and model licenses are retained in `gpu/runtime.json` and `gpu/licenses/`.
 

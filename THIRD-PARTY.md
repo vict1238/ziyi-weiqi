@@ -1,6 +1,6 @@
 # 梓懿围棋 — bundled third-party software
 
-梓懿围棋 uses local KataGo engines on 64-bit Windows with .NET Framework 4.8. The standalone EXE embeds the CPU runtime below; the full portable package also includes CUDA, OpenCL and both kata1 models. Gameplay needs no account, network service, or Python. CUDA requires a compatible NVIDIA GPU and driver; its app-local runtime is included, without installing the CUDA Toolkit or changing global PATH. OpenCL uses the GPU vendor's driver. All shipped upstream binaries are unmodified.
+The standalone EXE embeds KataGo's CPU runtime. The GPU base package includes the original CUDA and OpenCL engines and two kata1 models. CUDA uses the bundled runtime and a compatible NVIDIA driver. OpenCL uses the graphics vendor's driver.
 
 ## CUDA package: KataGo 1.18.1 and NVIDIA runtimes
 
@@ -57,7 +57,7 @@ The executable uses Eigen on the CPU. The portable upstream DLL set is bundled a
 - Official download: https://katagoarchive.org/g170/neuralnets/g170e-b10c128-s1141046784-d204142634.bin.gz
 - Training history: https://katagoarchive.org/g170/neuralnets/README.txt
 - License: CC0 1.0 public domain dedication by Jane Street and David J. Wu, https://katagoarchive.org/g170/LICENSE.txt . Original notice retained in `engine-assets/licenses/Model-LICENSE.txt`.
-- This compact 2020 model is retained for portable CPU responsiveness. The matching training-checkpoint counters were recorded in the official kata1 catalog on 2020-11-28; the UI identifies that as the catalog date, not the original training completion date. Search counts are actual engine visits, not a claimed human rank.
+- The CPU edition uses this compact model for faster inference. The app shows 2020-11-28, the date the checkpoint was added to the official kata1 catalog.
 
 ## Packaged file checksums
 

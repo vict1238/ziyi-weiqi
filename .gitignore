@@ -10,3 +10,16 @@ release/*/cuda/
 梓懿围棋-Windows-Update-*.zip
 release/**/*.exe
 梓懿围棋-源码-*.zip
+
+# Local build output and generated QA files
+/release/
+/design-qa.md
+/梓懿围棋-Windows-x64-v1.1.0.zip
+/qa/*
+!/qa/cuda-comparison.json
+!/qa/cuda-comparison.txt
+!/qa/image-import-preview.png
+!/qa/online-study.png
+!/qa/whole-game-review.png
+!/qa/cuda-benchmark-input/
+!/qa/cuda-benchmark-input/**

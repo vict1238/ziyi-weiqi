@@ -6,7 +6,7 @@ Tabler Icons by Paweł Kuna, MIT License.
 - Revision: `ed177a085b652fe04ec4f37ced867c94621e7840`
 - License: [Tabler-Icons-LICENSE.txt](Tabler-Icons-LICENSE.txt)
 - Original outline SVG files are retained under `icon-sources/`.
-- The app embeds 48 × 48 transparent PNG derivatives under `icons/`, rasterized from these originals with a uniform warm-brown stroke (#996835). No icon paths were redrawn.
+- The app embeds 48 × 48 transparent PNG derivatives under `icons/`, rasterized from these originals with a uniform warm-brown stroke (#996835).
 
 | App name | Upstream icon |
 | --- | --- |

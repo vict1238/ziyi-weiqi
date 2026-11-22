@@ -27,4 +27,4 @@ For **both** `kata1-tf3-b11c768-s11003M-d5973M-7gres` and `kata1-b18c384nbt-s999
 - A live process-module enumeration after inference confirmed all loaded cuDNN, cuBLAS and NVRTC DLLs came from the isolated deployment directory. Neither excluded DLL was loaded, and none was available in that directory.
 - The original NVIDIA DLLs remained byte-identical to the signed files in the pinned official wheels. No fatbinary, GPU architecture or other binary modification was performed.
 
-These checks establish the dependency selection for this KataGo build and its supported model families. They do not constitute a benchmark or an inference test on every NVIDIA GPU. Other compatible cards keep the original runtime architecture coverage and the alternative graph engine implementations.
+This deployment check covers the two listed models on the RTX 4060 Laptop GPU. The original DLLs retain their upstream architecture support.
